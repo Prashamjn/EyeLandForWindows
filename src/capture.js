@@ -40,7 +40,7 @@ module.exports = function createCapture(ctx) {
     const fd = new FormData();
     fd.append('reqtype', 'fileupload');
     fd.append('time', '1h');
-    fd.append('fileToUpload', new Blob([png], { type: 'image/png' }), 'eyeland.png');
+    fd.append('fileToUpload', new Blob([png], { type: 'image/png' }), 'selection.png');
     const r = await fetch('https://litterbox.catbox.moe/resources/internals/api.php', { method: 'POST', body: fd });
     const t = (await r.text()).trim();
     if (!/^https?:\/\//.test(t)) throw new Error(t || 'Upload failed');
@@ -58,7 +58,7 @@ module.exports = function createCapture(ctx) {
       const r = await dialog.showMessageBox({
         type: 'question', buttons: ['Continue', 'Cancel'], defaultId: 0, cancelId: 1, title: 'Lens search',
         message: 'Upload the selected area for searching?',
-        detail: 'Search engines need a web address for the image. Eyeland uploads only the area you selected to a temporary host (catbox.moe, deleted after 1 hour) and opens the search in your browser.',
+        detail: 'Search engines need a web address for the image. Liquid Island uploads only the area you selected to a temporary host (catbox.moe, deleted after 1 hour) and opens the search in your browser.',
       });
       if (r.response !== 0) return;
       ctx.saveSettings({ lensConsent: true });

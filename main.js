@@ -16,15 +16,20 @@ const voice = require('./src/voice');
 const { createShare } = require('./src/share');
 const { uniquePath } = require('./src/util');
 
+// Keep using the existing data folder (%APPDATA%\eyeland) so settings, tasks, voice memos etc. survive the rename to
+// Liquid Island. This must run before the single-instance lock, which is keyed on this folder.
+app.setPath('userData', path.join(app.getPath('appData'), 'eyeland'));
 if (!app.requestSingleInstanceLock()) app.quit();
 
-const W = 560, H = 300;
+// The island window is a fixed, transparent, click-through canvas. It is sized for the largest state (the 620x388
+// expanded island) plus room for its shadow; the island itself morphs inside it (see renderer/island.css).
+const W = 700, H = 460;
 const nativeDir = path.join(__dirname, 'native').replace('app.asar', 'app.asar.unpacked');
 const PS = (file, args) => ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', path.join(nativeDir, file), ...args];
 
 const defaultShortcuts = Object.fromEntries(CATALOG.map((p) => [p.id, p.key]));
 const defaults = {
-  position: 'top', offsetY: 0, eyeColor: '#b8ffa3', animSpeed: 1, theme: 'black',
+  position: 'top', offsetY: 6, accent: 'blue', animSpeed: 1, theme: 'black',
   hoverDelay: 120, overlayMs: 1800, autostart: false, clipboardHistory: false,
   focusMin: 25, breakMin: 5, notes: '', showBattery: true,
   hideInFullscreen: true, shortcuts: defaultShortcuts, coffeeMinutes: 0,
@@ -107,10 +112,10 @@ function createHub() {
   const build = parseInt((os.release().split('.')[2] || '0'), 10);
   const glass = process.platform === 'win32' && build >= 22621;
   hub = new BrowserWindow({
-    width: 1000, height: 680, minWidth: 780, minHeight: 540, show: false, autoHideMenuBar: true, title: 'Eyeland',
+    width: 1000, height: 680, minWidth: 780, minHeight: 540, show: false, autoHideMenuBar: true, title: 'Liquid Island',
     icon: path.join(__dirname, 'assets', 'icon.png'),
-    titleBarStyle: 'hidden', titleBarOverlay: { color: '#00000000', symbolColor: '#e6e8ea', height: 40 },
-    backgroundColor: glass ? '#00000000' : '#17181b',
+    titleBarStyle: 'hidden', titleBarOverlay: { color: '#00000000', symbolColor: '#F5F5F7', height: 40 },
+    backgroundColor: glass ? '#00000000' : '#0C0D10',
     ...(glass ? { backgroundMaterial: 'acrylic' } : {}),
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, backgroundThrottling: false },
   });
@@ -129,7 +134,7 @@ function openHub(id) {
 }
 const showHub = openHub;
 
-/* ---------- cursor tracking ---------- */
+/* ---------- cursor tracking (hover detection: the island window ignores mouse events until it is expanded) ---------- */
 let lastPt = { x: -1, y: -1 };
 setInterval(() => {
   if (!win || win.isDestroyed() || !win.isVisible()) return;
@@ -138,7 +143,7 @@ setInterval(() => {
   lastPt = p;
   const b = win.getBounds();
   send('cursor', { x: p.x - b.x, y: p.y - b.y });
-}, 16);
+}, 33);
 
 /* ---------- native helpers ---------- */
 function lineReader(proc, onLine) {
@@ -372,11 +377,11 @@ ipcMain.handle('ey:share:snapshot', () => share.snapshot());
 /* ---------- tray ---------- */
 function createTray() {
   tray = new Tray(nativeImage.createFromPath(path.join(__dirname, 'assets', 'tray.png')));
-  tray.setToolTip('Eyeland');
+  tray.setToolTip('Liquid Island');
   tray.setContextMenu(Menu.buildFromTemplate([
-    { label: 'Open panel', click: () => send('open-panel', {}) },
+    { label: 'Open dashboard', click: () => send('open-panel', {}) },
     { label: 'Open plugins', click: () => openHub('todo') },
-    { label: 'Quit Eyeland', click: () => app.quit() },
+    { label: 'Quit Liquid Island', click: () => app.quit() },
   ]));
   tray.on('click', () => send('open-panel', {}));
 }

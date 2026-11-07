@@ -7,7 +7,7 @@ const path = require('path');
 const PAPER = { A4: [210, 297], A3: [297, 420], Letter: [215.9, 279.4] };
 
 async function withWindow(html, fn) {
-  const file = path.join(os.tmpdir(), `eyeland-print-${Date.now()}-${Math.random().toString(36).slice(2)}.html`);
+  const file = path.join(os.tmpdir(), `liquid-island-print-${Date.now()}-${Math.random().toString(36).slice(2)}.html`);
   fs.writeFileSync(file, html);
   const win = new BrowserWindow({ show: false, webPreferences: { sandbox: true, javascript: true } });
   try {

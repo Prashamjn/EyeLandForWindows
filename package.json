@@ -1,7 +1,7 @@
 {
   "name": "eyeland",
   "version": "2.0.0",
-  "description": "A Dynamic Island for Windows with eyes that follow your cursor, and 20 built-in tools",
+  "description": "Liquid Island: a macOS Dynamic Island-inspired island for Windows, with a live dashboard and 20 built-in tools",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -17,7 +17,7 @@
   },
   "build": {
     "appId": "com.eyeland.app",
-    "productName": "Eyeland",
+    "productName": "Liquid Island",
     "asarUnpack": [
       "native/**",
       "node_modules/ffmpeg-static/**",

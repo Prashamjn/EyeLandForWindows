@@ -41,7 +41,7 @@ Plugins.register({
     root.append(h('div', { class: 'card' }, h('div', { class: 'row sp', style: 'margin-bottom:12px' }, summary, bScan), list,
       h('label', { class: 'row small', style: 'margin-top:12px;gap:8px' }, recentCb, 'Include files changed in the last hour (default skips them because apps may be using them)'),
       h('div', { class: 'row', style: 'margin-top:14px' }, bClean), result),
-      h('p', { class: 'small faint' }, 'Windows temp and Windows Update folders need Eyeland to run as administrator for everything to be removed. Files that are in use are skipped safely.'));
+      h('p', { class: 'small faint' }, 'Windows temp and Windows Update folders need Liquid Island to run as administrator for everything to be removed. Files that are in use are skipped safely.'));
     scan();
     return off;
   },

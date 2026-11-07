@@ -1,142 +1,127 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'">
-<link rel="stylesheet" href="style.css">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:">
+<title>Liquid Island</title>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="island.css">
+<link rel="stylesheet" href="dashboard.css">
 </head>
-<body data-theme="black">
-<div id="island" data-mode="idle">
+<body data-theme="black" data-accent="blue" data-edge="top-flush">
+<div id="island" data-state="compact" data-mini="bar">
 
-  <!-- 1. Idle pill: just the eyes (and a tiny countdown while the timer runs) -->
-  <div class="view v-idle">
-    <div class="eyes"><i class="eye"></i><i class="eye"></i></div>
-    <span id="coffeeIco" class="coffee-ico" hidden></span>
-    <span id="idleTimer" class="idle-timer"></span>
+  <!-- A. COMPACT: a plain capsule. Indicators appear only while the focus timer or Coffee mode is active. -->
+  <div class="view v-compact" id="vCompact">
+    <span id="cIco" class="c-ico" hidden></span>
+    <span id="cTimer" class="c-timer" hidden></span>
   </div>
 
-  <!-- 2. Overlay: volume / brightness / timer-done -->
-  <div class="view v-overlay">
-    <span id="ovIcon" class="ov-icon"></span>
-    <div class="ov-track"><div id="ovFill" class="ov-fill"></div></div>
-    <span id="ovText" class="ov-text"></span>
-    <span id="ovMsg" class="ov-msg"></span>
+  <!-- B. MINI: short-lived activity (volume, brightness, charging, notices, new track). Same slots for every kind. -->
+  <div class="view v-mini" id="vMini">
+    <div class="mini">
+      <span class="mini-ico" id="mIco"></span>
+      <div class="mini-track"><div class="mini-fill" id="mFill"></div></div>
+      <div class="mini-body"><span class="mini-title" id="mTitle"></span><span class="mini-sub" id="mSub"></span></div>
+      <span class="mini-val" id="mVal"></span>
+    </div>
   </div>
 
-  <!-- 3. Dashboard -->
-  <div class="view v-panel">
-    <header class="hdr">
-      <span id="battery" class="hdr-side"></span>
-      <div class="hdr-mid">
-        <div class="eyes small"><i class="eye"></i><i class="eye"></i></div>
-        <span id="date"></span><b id="clock"></b>
+  <!-- C. FULL: activity area on top, dashboard area underneath -->
+  <div class="view v-full" id="vFull">
+
+    <!-- SECTION 1: DYNAMIC ACTIVITY AREA (one reusable component, driven by activity objects) -->
+    <section class="activity" id="activity" data-kind="empty" aria-live="polite">
+      <div class="act-tile" id="actTile"></div>
+      <div class="act-main">
+        <div class="act-title" id="actTitle"></div>
+        <div class="act-sub" id="actSub"></div>
+        <div class="act-track" id="actTrack" hidden><i id="actFill"></i></div>
       </div>
-      <span class="hdr-side right"></span>
-    </header>
+      <div class="act-side">
+        <span class="act-val" id="actVal" hidden></span>
+        <div class="act-ctrls" id="actCtrls"></div>
+      </div>
+    </section>
 
-    <main class="content">
-      <section class="tab" data-tab="home">
-        <div class="grid">
-          <div class="col">
-            <span class="label">Now playing</span>
-            <div class="np">
-              <span id="homeTrack" class="title">Nothing playing</span>
-              <span id="homeArtist" class="sub"></span>
+    <!-- SECTION 2: DASHBOARD AREA -->
+    <section class="dash">
+      <div class="views">
+
+        <div class="vw" data-view="home">
+          <div class="home">
+            <div class="card clock">
+              <span class="clock-bat" id="battery" hidden></span>
+              <div class="clock-time" id="clockTime"></div>
+              <div><div class="clock-day" id="clockDay"></div><div class="clock-date" id="clockDate"></div></div>
             </div>
-            <div class="ctrls">
-              <button class="sq" data-media="prev" aria-label="Previous"><svg viewBox="0 0 24 24"><path d="M6 5v14M19 5L9 12l10 7z"/></svg></button>
-              <button class="sq" id="homeMusicPlay" data-media="play" aria-label="Play or pause"></button>
-              <button class="sq" data-media="next" aria-label="Next"><svg viewBox="0 0 24 24"><path d="M18 5v14M5 5l10 7-10 7z"/></svg></button>
-            </div>
-          </div>
-          <div class="col">
-            <span class="label">Focus timer</span>
-            <div class="np">
-              <span id="homeTimer" class="time mono">25:00</span>
-              <span id="homeTimerSub" class="sub">Ready</span>
-            </div>
-            <div class="ctrls">
-              <button id="homeToggle" class="btn primary">Start</button>
-              <button id="homeReset" class="btn">Reset</button>
-            </div>
-          </div>
-          <div class="col">
-            <span class="label">System</span>
-            <div class="srows">
-              <div class="srow">
-                <div class="srow-top"><button id="homeVolIcon" class="ico-btn" aria-label="Mute"></button><span>Volume</span><span id="homeVolNum" class="num">0</span></div>
-                <input id="homeVol" type="range" min="0" max="100">
+
+            <div class="card wx" id="weather" aria-live="polite"></div>
+
+            <div class="card qa" id="quick"></div>
+
+            <div class="card ctl">
+              <div class="ctl-row">
+                <div class="ctl-top"><span id="volIcon"></span><span>Volume</span><span class="num" id="volNum">0</span></div>
+                <input id="volRange" type="range" min="0" max="100" aria-label="Volume">
               </div>
-              <div class="srow" id="briRow">
-                <div class="srow-top"><span id="homeBriIcon" class="ico-btn static"></span><span>Brightness</span><span id="homeBriNum" class="num">0</span></div>
-                <input id="homeBri" type="range" min="0" max="100">
+              <div class="ctl-row" id="briRow">
+                <div class="ctl-top"><span id="briIcon"></span><span>Brightness</span><span class="num" id="briNum">0</span></div>
+                <input id="briRange" type="range" min="0" max="100" aria-label="Brightness">
               </div>
             </div>
           </div>
         </div>
-      </section>
 
-      <section class="tab" data-tab="music">
-        <div class="music">
-          <div class="music-info">
-            <span id="musicApp" class="label">No player</span>
-            <span id="musicTitle" class="music-title">Nothing playing</span>
-            <span id="musicArtist" class="sub"></span>
-          </div>
-          <div class="transport">
-            <button data-media="prev" aria-label="Previous"><svg viewBox="0 0 24 24"><path d="M6 5v14M19 5L9 12l10 7z"/></svg></button>
-            <button id="musicPlay" class="big" data-media="play" aria-label="Play or pause"></button>
-            <button data-media="next" aria-label="Next"><svg viewBox="0 0 24 24"><path d="M18 5v14M5 5l10 7-10 7z"/></svg></button>
+        <div class="vw" data-view="plugins">
+          <div class="pl">
+            <div class="pl-cats" id="plCats" role="tablist"></div>
+            <div class="pl-grid" id="plGrid"></div>
           </div>
         </div>
-      </section>
 
-      <section class="tab" data-tab="timer">
-        <div class="timer">
-          <div class="chips"><button data-tmode="focus">Focus</button><button data-tmode="break">Break</button></div>
-          <div id="timerBig" class="timer-big mono">25:00</div>
-          <div class="timer-bar"><div id="timerFill"></div></div>
-          <div class="timer-actions">
-            <button id="timerToggle" class="btn primary">Start</button>
-            <button id="timerReset" class="btn">Reset</button>
+        <div class="vw" data-view="timer">
+          <div class="timer view-fill">
+            <div class="chips"><button data-tmode="focus">Focus</button><button data-tmode="break">Break</button></div>
+            <div id="timerBig" class="timer-big">25:00</div>
+            <div class="timer-bar"><i id="timerFill"></i></div>
+            <div class="timer-actions">
+              <button id="timerToggle" class="btn primary">Start</button>
+              <button id="timerReset" class="btn">Reset</button>
+            </div>
+            <span id="timerCount" class="sub">0 focus sessions today</span>
           </div>
-          <span id="timerCount" class="sub">0 focus sessions today</span>
         </div>
-      </section>
 
-      <section class="tab" data-tab="clips">
-        <div class="list-head"><span class="label">Clipboard history</span><button id="clipClear" class="link-btn">Clear</button></div>
-        <div id="clipList" class="clip-list"></div>
-      </section>
-
-      <section class="tab" data-tab="tasks">
-        <div class="tasks">
-          <div class="task-add"><input id="taskInput" placeholder="Add a task and press Enter" maxlength="200" autocomplete="off"><button id="taskAdd" class="btn">Add</button></div>
-          <div id="taskList" class="task-list"></div>
+        <div class="vw" data-view="clips">
+          <div class="col">
+            <div class="list-head"><span class="label">Clipboard history</span><button id="clipClear" class="link-btn">Clear</button></div>
+            <div id="clipList" class="clip-list"></div>
+          </div>
         </div>
-      </section>
 
-      <section class="tab" data-tab="apps">
-        <div id="appsGrid" class="apps"></div>
-      </section>
+        <div class="vw" data-view="tasks">
+          <div class="col">
+            <div class="task-add"><input id="taskInput" placeholder="Add a task and press Enter" maxlength="200" autocomplete="off"><button id="taskAdd" class="btn">Add</button></div>
+            <div id="taskList" class="task-list"></div>
+          </div>
+        </div>
 
-      <section class="tab" data-tab="settings">
-        <div id="settingsForm" class="settings"></div>
-      </section>
-    </main>
+        <div class="vw" data-view="settings"><div id="settingsForm" class="settings"></div></div>
+      </div>
 
-    <nav id="nav" class="nav">
-      <button data-tab="home" aria-label="Home"><svg viewBox="0 0 24 24"><path d="M3 11l9-8 9 8v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"/></svg><span>Home</span></button>
-      <button data-tab="music" aria-label="Music"><svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></button>
-      <button data-tab="timer" aria-label="Focus timer"><svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9 2h6"/></svg></button>
-      <button data-tab="clips" aria-label="Clipboard"><svg viewBox="0 0 24 24"><rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4h6v3H9z"/></svg></button>
-      <button data-tab="tasks" aria-label="Tasks"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 12l3 3 5-6"/></svg></button>
-      <button data-tab="apps" aria-label="Plugins"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></svg></button>
-      <button data-tab="settings" aria-label="Settings"><svg viewBox="0 0 24 24"><path d="M4 6h8M18 6h2M4 12h2M12 12h8M4 18h10M20 18h0"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg></button>
-    </nav>
+      <nav id="nav" class="nav" aria-label="Dashboard"></nav>
+    </section>
   </div>
 </div>
+
 <script src="../shared/icons.js"></script>
-<script src="renderer.js"></script>
+<script src="../shared/weather.js"></script>
+<script src="core.js"></script>
+<script src="activity.js"></script>
+<script src="island.js"></script>
+<script src="dashboard.js"></script>
+<script src="panels.js"></script>
+<script src="app.js"></script>
 </body>
 </html>
