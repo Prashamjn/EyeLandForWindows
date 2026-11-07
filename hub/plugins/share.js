@@ -48,7 +48,7 @@ Plugins.register({
       if (mode === 'send') body.append(h('div', { class: 'card' }, c.dropZone('Drop files to send, or click to choose', { onFiles: (p) => { p.forEach((x) => !files.includes(x) && files.push(x)); paintFiles(); } }), fileList));
       else body.append(h('div', { class: 'card' }, h('p', { style: 'margin:0' }, 'Start receiving, scan the code with your phone camera, then pick the files to send. Files are saved to the Eyeland Received folder inside Downloads.')));
       body.append(h('div', { class: 'card' }, ips.length > 1 ? h('div', { style: 'margin-bottom:12px' }, h('span', { class: 'label' }, 'Network'), ipSel) : null, startBtn,
-        h('p', { class: 'small faint' }, 'The first time, Windows may ask to allow Eyeland on private networks. Choose allow so your phone can connect. Use a 5 GHz Wi-Fi network for the highest speed.')));
+        h('p', { class: 'small faint' }, 'The first time, Windows may ask to allow Liquid Island on private networks. Choose allow so your phone can connect. Use a 5 GHz Wi-Fi network for the highest speed.')));
       paintFiles();
     }
 

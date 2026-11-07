@@ -4,7 +4,7 @@ async function fetchJSON(url, opts = {}) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), opts.timeout || 12000);
   try {
-    const r = await fetch(url, { signal: ctrl.signal, headers: { 'User-Agent': 'Eyeland/1.0' } });
+    const r = await fetch(url, { signal: ctrl.signal, headers: { 'User-Agent': 'LiquidIsland/1.0' } });
     if (!r.ok) throw new Error('HTTP ' + r.status);
     return await r.json();
   } finally { clearTimeout(t); }

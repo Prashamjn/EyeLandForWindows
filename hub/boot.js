@@ -1,4 +1,9 @@
 (async () => {
+  // Listen for "open this plugin" immediately. The main process can send it as soon as the page loads, which is
+  // before the async setup below finishes; without this the request was lost and the hub fell back to Tasks.
+  let wanted = null, openNow = null;
+  ey.on('hub:open', ({ id }) => { if (openNow) openNow(id); else wanted = id; });
+
   const params = new URLSearchParams(location.search);
   if (params.get('glass') === '1') document.body.classList.add('acrylic');
   ctx.S = await ey.invoke('settings-get');
@@ -29,9 +34,9 @@
     catch (e) { view.append(h('div', { class: 'card' }, 'This plugin failed to load: ' + e.message)); console.error(e); }
   }
 
-  ey.on('hub:open', ({ id }) => open(id));
+  openNow = open;
   ey.on('settings', (s) => { ctx.S = s; });
   ey.on('coffee', (on) => { coffee = on; const b = items.get('coffee'); b.querySelector('.dot')?.remove(); if (on) b.append(h('span', { class: 'dot' })); });
   ctx.refreshCatalog = async () => paintKeys(await ey.invoke('ey:catalog'));
-  open(location.hash.slice(1) || 'todo');
+  open(wanted || location.hash.slice(1) || 'todo');
 })();

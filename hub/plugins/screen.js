@@ -40,7 +40,7 @@
     root.append(h('div', { class: 'card' },
       h('p', { class: 'muted', style: 'margin-top:0' }, 'Drag around a product, logo, plant or anything else on screen. The selected area opens as a visual search in your browser, so you can find the item or similar images.'),
       h('span', { class: 'label' }, 'Search engine'), seg,
-      h('p', { class: 'small faint' }, 'Search engines need a web address for the picture, so Eyeland uploads only the selected area to a temporary host (catbox.moe) that deletes it after 1 hour. You are asked once before the first upload.'),
+      h('p', { class: 'small faint' }, 'Search engines need a web address for the picture, so Liquid Island uploads only the selected area to a temporary host (catbox.moe) that deletes it after 1 hour. You are asked once before the first upload.'),
       h('button', { class: 'btn sm', onclick: () => { c.save({ lensConsent: false }); c.toast('You will be asked again before the next upload'); } }, 'Ask me again next time')));
   });
 
@@ -81,7 +81,7 @@
       paint(await c.ey.invoke('ey:coffee'));
       root.append(h('div', { class: 'card' }, h('div', { class: 'row sp' }, h('div', {}, h('span', { class: 'label' }, 'Status'), state), btn)),
         h('div', { class: 'card' }, h('span', { class: 'label' }, 'Turn off automatically'), sel,
-          h('p', { class: 'small faint' }, 'While it is on, Windows will not dim the screen or start the screen saver, and your eyes stay wide open on the island. It resets when you quit Eyeland.')));
+          h('p', { class: 'small faint' }, 'While it is on, Windows will not dim the screen or start the screen saver, and the island shows a small cup. It resets when you quit Liquid Island.')));
       return c.ey.on('coffee', paint);
     },
   });

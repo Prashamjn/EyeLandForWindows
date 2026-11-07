@@ -151,7 +151,7 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&l
 
 function sendPage(st) {
   const rows = st.files.map((f) => `<div class="row" data-id="${f.id}"><div class="top"><div><div class="name">${esc(f.name)}</div><div class="sub">${f.size} B</div></div><a class="btn" href="/${st.token}/f/${f.id}" download>Download</a></div><div class="bar"><i></i></div><div class="sub st"></div></div>`).join('');
-  return `<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><title>Eyeland</title><style>${CSS}</style>
+  return `<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><title>Liquid Island</title><style>${CSS}</style>
 <h1>Files from your PC</h1><p>Tap Download on each file.</p>${rows}
 <script>${fmt}
 document.querySelectorAll('.sub').forEach(e=>{if(!e.classList.contains('st')&&/^\\d+ B$/.test(e.textContent))e.textContent=fmt(parseInt(e.textContent))});
@@ -163,7 +163,7 @@ r.querySelector('.st').textContent=m.status==='active'?fmt(m.speed)+'/s':m.statu
 }
 
 function receivePage(st) {
-  return `<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><title>Eyeland</title><style>${CSS}</style>
+  return `<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><title>Liquid Island</title><style>${CSS}</style>
 <h1>Send files to your PC</h1><p>Choose files. They are saved on the computer.</p>
 <div class="drop" id="drop">Drop files here or use the button<br><br><button id="pick">Choose files</button><input id="f" type="file" multiple hidden></div><div id="list"></div>
 <script>${fmt}

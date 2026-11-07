@@ -1,0 +1,56 @@
+/* Liquid Island design tokens. Every colour, radius and duration used by the island comes from here. */
+:root {
+  --speed: 1;                                   /* user "motion speed" setting */
+  --font: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --font-display: "Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+
+  /* surfaces: island body -> dashboard panel -> activity / elevated */
+  --bg: #08090B;
+  --surface: #111318;
+  --elevated: #191C22;
+  --card: rgba(255, 255, 255, .035);
+
+  --fg: #F5F5F7;
+  --muted: #9297A2;
+  --faint: #5F6571;
+
+  --border: rgba(255, 255, 255, .07);
+  --border-hi: rgba(255, 255, 255, .13);
+  --hover: rgba(255, 255, 255, .06);
+  --press: rgba(255, 255, 255, .10);
+  --track: rgba(255, 255, 255, .15);
+  --scrim: rgba(0, 0, 0, .35);
+
+  --accent: #5B9DFF;
+  --on-accent: #06101F;
+  --success: #4CD38A;
+  --warn: #F5B14C;
+  --danger: #FF6B6B;
+
+  --r-card: 16px;
+  --r-ctl: 10px;
+
+  /* motion: one decelerating curve, no overshoot */
+  --ease-out: cubic-bezier(.32, .72, 0, 1);
+  --ease-std: cubic-bezier(.4, 0, .2, 1);
+  --t-morph: calc(.5s / var(--speed));
+  --t-fade: calc(.16s / var(--speed));
+  --t-ui: calc(.15s / var(--speed));
+}
+
+/* island body themes (values of the existing "theme" setting are unchanged) */
+body[data-theme="graphite"] { --bg: #16181D; --surface: #1D2027; --elevated: #262A33; }
+body[data-theme="midnight"] { --bg: #060A18; --surface: #0D1326; --elevated: #151D36; }
+body[data-theme="light"] {
+  --bg: #F5F5F7; --surface: #FFFFFF; --elevated: #ECECF0; --card: rgba(0, 0, 0, .035);
+  --fg: #141416; --muted: #6B6F7A; --faint: #9A9EA8;
+  --border: rgba(0, 0, 0, .08); --border-hi: rgba(0, 0, 0, .14);
+  --hover: rgba(0, 0, 0, .05); --press: rgba(0, 0, 0, .09); --track: rgba(0, 0, 0, .13); --scrim: rgba(0, 0, 0, .18);
+  --accent: #2F7BF5; --on-accent: #FFFFFF; --success: #1FA463; --warn: #C27A0E; --danger: #D93A3A;
+}
+
+/* accent (restrained: blue, white or green) */
+body[data-accent="white"] { --accent: #F5F5F7; --on-accent: #08090B; }
+body[data-accent="green"] { --accent: #4CD38A; --on-accent: #06180E; }
+body[data-theme="light"][data-accent="white"] { --accent: #141416; --on-accent: #FFFFFF; }
+body[data-theme="light"][data-accent="green"] { --accent: #1FA463; --on-accent: #FFFFFF; }

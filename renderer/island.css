@@ -1,0 +1,117 @@
+/* Island shell, the three states (compact / mini / full), motion, mini view, activity area. */
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; height: 100%; background: transparent; overflow: hidden; user-select: none;
+  font: 13px/1.4 var(--font); color: var(--fg); -webkit-font-smoothing: antialiased;
+}
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.fill svg { fill: currentColor; stroke-width: 1.2; }
+[hidden] { display: none !important; }
+.mono { font-variant-numeric: tabular-nums; }
+::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-thumb { background: var(--track); border-radius: 3px; }
+
+/* ---------- shell ---------- */
+#island {
+  --w: 124px; --h: 30px; --r: 15px; --mw: 320px; --mh: 46px;
+  position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+  width: var(--w); height: var(--h); background: var(--bg); overflow: hidden; border-radius: var(--r);
+  box-shadow: 0 0 0 1px var(--border), 0 8px 22px var(--scrim);
+  transition: width var(--t-morph) var(--ease-out), height var(--t-morph) var(--ease-out),
+              border-radius var(--t-morph) var(--ease-out), box-shadow var(--t-morph) var(--ease-out);
+}
+body[data-edge="top-flush"] #island { border-radius: 0 0 var(--r) var(--r); }
+body[data-edge="bottom-flush"] #island { border-radius: var(--r) var(--r) 0 0; }
+
+#island[data-state="compact"][data-busy] { --w: 176px; }
+#island[data-state="mini"] { --w: var(--mw); --h: var(--mh); --r: 23px; }
+#island[data-state="mini"][data-mini="media"] { --mw: 372px; --mh: 66px; --r: 30px; }
+#island[data-state="full"] {
+  --w: 620px; --h: 388px; --r: 36px;
+  box-shadow: 0 0 0 1px var(--border-hi), 0 26px 60px -8px rgba(0, 0, 0, .6);
+}
+
+/* ---------- views: fixed size, centred, cross-faded while the shell morphs (no layout reflow) ---------- */
+.view {
+  position: absolute; top: 0; left: 50%; opacity: 0; visibility: hidden; pointer-events: none;
+  transform: translateX(-50%) scale(.985);
+  transition: opacity var(--t-fade) var(--ease-std), transform var(--t-morph) var(--ease-out), visibility 0s linear var(--t-fade);
+}
+#island[data-state="compact"] .v-compact,
+#island[data-state="mini"] .v-mini,
+#island[data-state="full"] .v-full {
+  opacity: 1; visibility: visible; pointer-events: auto; transform: translateX(-50%) scale(1);
+  transition-delay: calc(.1s / var(--speed)), 0s, 0s;
+}
+#island[data-state="full"] .v-full { transition-delay: calc(.14s / var(--speed)), 0s, 0s; }
+
+/* ---------- A. compact: a plain black capsule; indicators only while something is running ---------- */
+.v-compact { width: 176px; height: 30px; display: flex; align-items: center; justify-content: center; gap: 8px; pointer-events: none !important; }
+.c-ico svg { width: 13px; height: 13px; color: var(--muted); }
+.c-timer { font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--muted); }
+.c-timer.running { color: var(--fg); }
+
+/* ---------- B. mini expanded ---------- */
+.v-mini { width: var(--mw); height: var(--mh); pointer-events: none !important; }
+.mini { display: flex; align-items: center; gap: 12px; height: 100%; padding: 0 18px; }
+.mini-ico { width: 20px; height: 20px; display: grid; place-items: center; flex: none; }
+.mini-ico svg { width: 18px; height: 18px; }
+.mini-track { flex: 1; height: 5px; border-radius: 3px; background: var(--track); overflow: hidden; display: none; }
+.mini-fill { height: 100%; width: 0; background: var(--fg); border-radius: inherit; transition: width calc(.12s / var(--speed)) linear; }
+.mini-val { min-width: 40px; text-align: right; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; display: none; }
+.mini-body { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; }
+.mini-title { font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mini-sub { font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#island[data-mini="bar"] .mini-track, #island[data-mini="bar"] .mini-val { display: block; }
+#island[data-mini="bar"] .mini-body { display: none; }
+#island[data-mini="media"] .mini-ico { width: 40px; height: 40px; border-radius: 12px; background: var(--elevated); }
+#island[data-mini="media"] .mini-ico svg { width: 20px; height: 20px; }
+#island[data-mini="media"] .mini-title { font-size: 13px; }
+#island[data-tone="success"] .mini-ico { color: var(--success); }
+#island[data-tone="warn"] .mini-ico { color: var(--warn); }
+
+/* colour swatch used as an icon (colour picker result) */
+.swatch { width: 18px; height: 18px; border-radius: 6px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .35); display: block; }
+
+/* ---------- C. full expanded: [activity area] over [dashboard area] ---------- */
+.v-full { width: 620px; height: 388px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+
+.activity {
+  flex: none; height: 84px; border-radius: 26px; background: var(--elevated); border: 1px solid var(--border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .04); padding: 0 16px 0 14px; display: flex; align-items: center; gap: 14px;
+}
+.activity.swap .act-tile, .activity.swap .act-main, .activity.swap .act-side { animation: actin calc(.22s / var(--speed)) var(--ease-std); }
+@keyframes actin { from { opacity: 0; transform: translateY(4px); } }
+.act-tile { width: 56px; height: 56px; border-radius: 18px; background: var(--bg); border: 1px solid var(--border); display: grid; place-items: center; flex: none; color: var(--fg); }
+.act-tile svg { width: 24px; height: 24px; stroke-width: 1.6; }
+.activity[data-kind="empty"] .act-tile { color: var(--faint); }
+.activity[data-tone="success"] .act-tile { color: var(--success); }
+.activity[data-tone="warn"] .act-tile { color: var(--warn); }
+.act-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.act-title { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.act-sub { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.activity[data-kind="empty"] .act-title { color: var(--muted); }
+.act-track { height: 5px; border-radius: 3px; background: var(--track); overflow: hidden; margin-top: 4px; }
+.act-track i { display: block; height: 100%; width: 0; background: var(--fg); border-radius: inherit; transition: width calc(.12s / var(--speed)) linear; }
+.act-side { display: flex; align-items: center; gap: 4px; flex: none; }
+.act-val { font: 600 22px/1 var(--font-display); letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+.act-ctrls { display: flex; gap: 2px; }
+.act-btn { width: 38px; height: 34px; border-radius: 12px; display: grid; place-items: center; transition: background var(--t-ui); }
+.act-btn:hover { background: var(--hover); } .act-btn:active { background: var(--press); }
+.act-btn.primary { background: var(--fg); color: var(--bg); width: 44px; } .act-btn.primary:hover { opacity: .88; background: var(--fg); }
+.act-btn svg { width: 17px; height: 17px; }
+
+.dash {
+  flex: 1; min-height: 0; border-radius: 26px; background: var(--surface); border: 1px solid var(--border);
+  padding: 10px; display: flex; flex-direction: column; gap: 6px;
+}
+.views { flex: 1; min-height: 0; position: relative; }
+.vw { display: none; height: 100%; }
+.vw.on { display: block; animation: vwin calc(.2s / var(--speed)) var(--ease-std); }
+@keyframes vwin { from { opacity: 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: .01ms !important; transition-delay: 0s !important; animation-duration: .01ms !important; animation-delay: 0s !important; }
+  .view { transform: translateX(-50%) !important; }
+}

@@ -32,7 +32,7 @@ Plugins.register({
     // small preview tile used by the dot and corner pickers
     function tile(label, on, pick, variant) {
       const cv = h('canvas', { style: 'width:100%;border-radius:6px;background:#fff;display:block' });
-      try { QRRender.render(cv, { ...o, ...variant, text: 'https://eyeland.app', logo: null, label: '' }, qrcode, 220); } catch {}
+      try { QRRender.render(cv, { ...o, ...variant, text: 'https://example.com', logo: null, label: '' }, qrcode, 220); } catch {}
       return h('button', { class: 'btn', style: `flex-direction:column;height:auto;padding:8px;gap:6px;${on ? 'border-color:var(--accent);background:rgba(184,255,163,.1)' : ''}`, onclick: pick }, cv, label);
     }
 
