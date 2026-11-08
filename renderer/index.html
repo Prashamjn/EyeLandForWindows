@@ -2,14 +2,17 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob: https:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; worker-src 'self' blob:; connect-src 'self' blob: data:">
 <title>Liquid Island</title>
 <link rel="stylesheet" href="tokens.css">
 <link rel="stylesheet" href="island.css">
 <link rel="stylesheet" href="dashboard.css">
+<link rel="stylesheet" href="workspace.css">
+<link rel="stylesheet" href="plugins.css">
+<link rel="stylesheet" href="cc.css">
 </head>
 <body data-theme="black" data-accent="blue" data-edge="top-flush">
-<div id="island" data-state="compact" data-mini="bar">
+<div id="island" data-state="compact" data-mode="dash" data-mini="bar">
 
   <!-- A. COMPACT: a plain capsule. Indicators appear only while the focus timer or Coffee mode is active. -->
   <div class="view v-compact" id="vCompact">
@@ -113,15 +116,58 @@
       <nav id="nav" class="nav" aria-label="Dashboard"></nav>
     </section>
   </div>
+  <!-- D. WORKSPACE: one larger view that hosts a plugin page or the Control Centre. The shell morphs to its size. -->
+  <div class="view v-work" id="vWork">
+    <header class="wk-head">
+      <button class="wk-btn" id="wkBack" title="Back" aria-label="Back"></button>
+      <span class="wk-ico" id="wkIco"></span>
+      <h2 class="wk-title" id="wkTitle"></h2>
+      <span class="wk-key" id="wkKey" hidden></span>
+      <span class="wk-spacer"></span>
+      <button class="wk-btn" id="wkFav" title="Favourite" aria-label="Favourite" hidden></button>
+      <button class="wk-btn" id="wkPin" title="Pin to Home" aria-label="Pin to Home" hidden></button>
+      <button class="wk-btn" id="wkHome" title="Dashboard" aria-label="Dashboard"></button>
+      <button class="wk-btn" id="wkClose" title="Collapse" aria-label="Collapse island"></button>
+    </header>
+    <div class="wk-body" id="wkBody">
+      <div class="pw" id="pluginHost" hidden></div>
+      <div class="cc" id="ccRoot" hidden></div>
+    </div>
+    <div class="wk-banner" id="wkBanner" role="status" aria-live="polite" hidden></div>
+  </div>
 </div>
 
 <script src="../shared/icons.js"></script>
 <script src="../shared/weather.js"></script>
+<script src="../shared/catalog.js"></script>
 <script src="core.js"></script>
+<script src="plugin-host.js"></script>
+<script src="plugins/calc-engine.js"></script>
+<script src="plugins/qr-render.js"></script>
+<script src="plugins/screen.js"></script>
+<script src="plugins/todo.js"></script>
+<script src="plugins/calendar.js"></script>
+<script src="plugins/calc.js"></script>
+<script src="plugins/weather.js"></script>
+<script src="plugins/voice.js"></script>
+<script src="plugins/qr.js"></script>
+<script src="plugins/translate.js"></script>
+<script src="plugins/convert.js"></script>
+<script src="plugins/compress.js"></script>
+<script src="plugins/print.js"></script>
+<script src="plugins/cleaner.js"></script>
+<script src="plugins/youtube.js"></script>
+<script src="plugins/speed.js"></script>
+<script src="plugins/share.js"></script>
+<script src="plugins/sysinfo.js"></script>
+<script src="plugins/shortcuts.js"></script>
 <script src="activity.js"></script>
 <script src="island.js"></script>
 <script src="dashboard.js"></script>
 <script src="panels.js"></script>
+<script src="workspace.js"></script>
+<script src="cc.js"></script>
+<script src="notify.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

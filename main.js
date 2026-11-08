@@ -15,43 +15,56 @@ const speed = require('./src/speedtest');
 const voice = require('./src/voice');
 const { createShare } = require('./src/share');
 const { uniquePath } = require('./src/util');
+const { createSystem } = require('./src/system');
 
 // Keep using the existing data folder (%APPDATA%\eyeland) so settings, tasks, voice memos etc. survive the rename to
 // Liquid Island. This must run before the single-instance lock, which is keyed on this folder.
 app.setPath('userData', path.join(app.getPath('appData'), 'eyeland'));
 if (!app.requestSingleInstanceLock()) app.quit();
 
-// The island window is a fixed, transparent, click-through canvas. It is sized for the largest state (the 620x388
-// expanded island) plus room for its shadow; the island itself morphs inside it (see renderer/island.css).
-const W = 700, H = 460;
+// The island window is a fixed, transparent, click-through canvas. It is sized for the largest state (the 700x500 workspace)
+// plus room for its shadow and is NEVER resized during animation; the island itself morphs inside it (renderer/island.css).
+const W = 760, H = 620;
 const nativeDir = path.join(__dirname, 'native').replace('app.asar', 'app.asar.unpacked');
 const PS = (file, args) => ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', path.join(nativeDir, file), ...args];
 
 const defaultShortcuts = Object.fromEntries(CATALOG.map((p) => [p.id, p.key]));
 const defaults = {
-  position: 'top', offsetY: 6, accent: 'blue', animSpeed: 1, theme: 'black',
+  position: 'top', offsetY: 10, display: 'primary', settingsVersion: 2, accent: 'blue', animSpeed: 1, theme: 'black',
   hoverDelay: 120, overlayMs: 1800, autostart: false, clipboardHistory: false,
   focusMin: 25, breakMin: 5, notes: '', showBattery: true,
   hideInFullscreen: true, shortcuts: defaultShortcuts, coffeeMinutes: 0,
   todos: [], events: {}, colorFormat: 'hex', colorHistory: [], ocrLang: 'eng', translateTo: 'en',
   lensEngine: 'google', lensConsent: false, weatherPlace: null, tempUnit: 'c',
+  // Phase 2
+  expandOn: 'last', blurCollapseSec: 8, reduceMotion: false, favorites: [], pinned: ['mute', 'coffee', 'textExtract', 'colorPicker'],
+  notifyBluetooth: true, notifyWifi: true, notifyVpn: true, notifyAudio: true, notifyMic: true, notifyPower: true, notifyDisplay: true, notifyBattery: true, notifyMs: 2800,
+  ccMic: true, ccPower: true, ccNight: true, ccDisplay: true, ccCharging: true,
+  monitorAudio: true, monitorNetwork: true, monitorBluetooth: true, monitorPower: true,
 };
-let settings = { ...defaults }, win, hub, tray, clips = [], lastClip = '';
-let hubReady = false, pendingHub = null;
+let settings = { ...defaults }, win, tray, clips = [], lastClip = '', system;
 const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
 function loadSettings() {
-  try { settings = { ...defaults, ...JSON.parse(fs.readFileSync(settingsFile(), 'utf8')) }; } catch { settings = { ...defaults }; }
+  let saved = null;
+  try { saved = JSON.parse(fs.readFileSync(settingsFile(), 'utf8')); } catch {}
+  settings = { ...defaults, ...(saved || {}) };
   settings.shortcuts = { ...defaultShortcuts, ...(settings.shortcuts || {}) };
+  // One-time migration to settings v2 (Phase 2). Everything else the user saved is kept untouched. The only value changed is
+  // the old default top gap (0 = flush against the screen edge, or 6), which made the island look glued to the top: it becomes 10 px.
+  // A gap the user chose deliberately (anything else) is respected; the slider still goes down to 0 afterwards.
+  if (saved && (saved.settingsVersion || 1) < 2) {
+    if (saved.offsetY === undefined || saved.offsetY === 0 || saved.offsetY === 6) settings.offsetY = defaults.offsetY;
+    settings.settingsVersion = 2;
+    try { fs.writeFileSync(settingsFile(), JSON.stringify(settings, null, 2)); } catch {}
+  }
 }
 const saveFile = () => { try { fs.writeFileSync(settingsFile(), JSON.stringify(settings, null, 2)); } catch {} };
 const S = () => settings;
 
 /* ---------- messaging ---------- */
 const send = (ch, data) => { if (win && !win.isDestroyed()) win.webContents.send(ch, data); };
-const sendHub = (ch, data) => { if (hub && !hub.isDestroyed()) hub.webContents.send(ch, data); };
-const broadcast = (ch, data, except) => {
-  for (const w of [win, hub]) if (w && !w.isDestroyed() && w.webContents !== except) w.webContents.send(ch, data);
-};
+// There is a single UI window now (the island), so "broadcast" only skips the window that made the change.
+const broadcast = (ch, data, except) => { if (win && !win.isDestroyed() && win.webContents !== except) win.webContents.send(ch, data); };
 const toast = (t) => send('toast', t);
 function saveSettings(partial, except) {
   settings = { ...settings, ...partial };
@@ -60,11 +73,21 @@ function saveSettings(partial, except) {
 }
 
 /* ---------- island window ---------- */
+// The window itself sits `offsetY` px from the screen edge (the island is flush with the top of the window), so the physical window
+// and what you see always agree. The target display is the primary one unless a connected display was chosen in Settings.
+function targetDisplay() {
+  const want = settings.display;
+  if (want && want !== 'primary') { const d = screen.getAllDisplays().find((x) => String(x.id) === String(want)); if (d) return d; }
+  return screen.getPrimaryDisplay();
+}
 function place() {
-  const b = screen.getPrimaryDisplay().bounds;
-  const x = Math.round(b.x + (b.width - W) / 2);
-  const y = settings.position === 'bottom' ? b.y + b.height - H : b.y;
-  win.setBounds({ x, y, width: W, height: H });
+  if (!win || win.isDestroyed()) return;
+  const b = targetDisplay().bounds;
+  const off = Math.max(0, Math.min(60, Math.round(+settings.offsetY || 0)));
+  const w = Math.min(W, b.width), h = Math.min(H, b.height - off);
+  const x = Math.round(b.x + (b.width - w) / 2);
+  const y = settings.position === 'bottom' ? b.y + b.height - h - off : b.y + off;
+  win.setBounds({ x, y, width: w, height: h });
 }
 
 function createWindow() {
@@ -86,7 +109,7 @@ function createWindow() {
 }
 
 /* ---------- show/hide: full-screen apps and screen capture ---------- */
-let fullscreen = false, capturing = false, hubWasVisible = false, ignoreFsUntil = 0;
+let fullscreen = false, capturing = false, ignoreFsUntil = 0;
 function updateIsland() {
   if (!win || win.isDestroyed()) return;
   const fs_ = fullscreen && Date.now() > ignoreFsUntil;
@@ -94,45 +117,19 @@ function updateIsland() {
   if (show && !win.isVisible()) win.showInactive();
   if (!show && win.isVisible()) win.hide();
 }
-function hideForCapture(on, alsoHub = true) {
+function hideForCapture(on) {
   capturing = on;
-  if (on) {
-    if (alsoHub && hub && !hub.isDestroyed() && hub.isVisible()) { hubWasVisible = true; hub.hide(); }
-  } else {
-    ignoreFsUntil = Date.now() + 900;
-    setTimeout(updateIsland, 950);
-    if (hubWasVisible && hub && !hub.isDestroyed()) { hub.show(); }
-    hubWasVisible = false;
-  }
+  if (!on) { ignoreFsUntil = Date.now() + 900; setTimeout(updateIsland, 950); }
   updateIsland();
 }
 
-/* ---------- hub window (plugins) ---------- */
-function createHub() {
-  const build = parseInt((os.release().split('.')[2] || '0'), 10);
-  const glass = process.platform === 'win32' && build >= 22621;
-  hub = new BrowserWindow({
-    width: 1000, height: 680, minWidth: 780, minHeight: 540, show: false, autoHideMenuBar: true, title: 'Liquid Island',
-    icon: path.join(__dirname, 'assets', 'icon.png'),
-    titleBarStyle: 'hidden', titleBarOverlay: { color: '#00000000', symbolColor: '#F5F5F7', height: 40 },
-    backgroundColor: glass ? '#00000000' : '#0C0D10',
-    ...(glass ? { backgroundMaterial: 'acrylic' } : {}),
-    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, backgroundThrottling: false },
-  });
-  hubReady = false;
-  hub.loadFile(path.join(__dirname, 'hub', 'index.html'), { query: { glass: glass ? '1' : '0' } });
-  hub.webContents.on('did-finish-load', () => {
-    hubReady = true;
-    if (pendingHub) { sendHub('hub:open', { id: pendingHub }); pendingHub = null; }
-  });
-  hub.on('close', (e) => { if (!app.isQuitting) { e.preventDefault(); hub.hide(); } });
+/* ---------- opening things inside the island (plugin pages, Control Centre). There is no separate plugin window. ---------- */
+function openInIsland(opts) {
+  if (!win || win.isDestroyed()) return;
+  if (!win.isVisible() && !capturing) win.showInactive();      // an explicit request (shortcut / tray) shows it even over a full-screen app
+  send('open-panel', opts || {});
 }
-function openHub(id) {
-  if (!hub || hub.isDestroyed()) createHub();
-  if (hubReady) sendHub('hub:open', { id }); else pendingHub = id;
-  hub.show(); hub.focus();
-}
-const showHub = openHub;
+const openPlugin = (id, payload) => openInIsland({ plugin: id, payload });
 
 /* ---------- cursor tracking (hover detection: the island window ignores mouse events until it is expanded) ---------- */
 let lastPt = { x: -1, y: -1 };
@@ -165,15 +162,22 @@ function keepAlive(file, args, onLine) {
   start();
 }
 function startWatchers() {
+  // volume, brightness, battery, Wi-Fi, Bluetooth and VPN are event-driven and live in src/system; here only the two scripts
+  // that have no event source: full-screen detection (checked twice a second) and the media session.
   keepAlive('sys.ps1', ['-Mode', 'watch'], (l) => {
-    const [kind, a, b] = l.split('|');
-    if (kind === 'vol') send('system', { kind: 'vol', value: +a, muted: b === '1' });
-    if (kind === 'bri') send('system', { kind: 'bri', value: a === 'na' ? null : +a });
+    const [kind, a] = l.split('|');
     if (kind === 'fs') { fullscreen = a === '1'; updateIsland(); }
   });
   keepAlive('media.ps1', [], (l) => { try { send('media', JSON.parse(l)); } catch {} });
 }
-ipcMain.on('system-set', (_e, { target, value }) => execFile('powershell.exe', PS('sys.ps1', ['-Mode', 'set', '-Target', String(target), '-Value', String(Math.round(value))]), { windowsHide: true }, () => {}));
+// the island's volume / brightness sliders and the Mute quick action
+ipcMain.on('system-set', (_e, { target, value }) => {
+  if (target === 'vol') system.call('audio.setVolume', { value });
+  else if (target === 'bri') system.call('bri.set', { value });
+  else if (target === 'mute') system.call('audio.setMute', { muted: !(system.cache.audio && system.cache.audio.muted) });
+});
+ipcMain.handle('cc:call', (_e, op, arg) => system.call(op, arg));
+ipcMain.handle('ey:displays', () => require('./src/system/display').snapshot().map(({ id, label, primary }) => ({ id, label, primary })));
 ipcMain.on('media-key', (_e, cmd) => execFile('powershell.exe', PS('sys.ps1', ['-Mode', 'key', '-Target', String(cmd)]), { windowsHide: true }, () => {}));
 
 /* ---------- island window interaction ---------- */
@@ -206,7 +210,7 @@ function setCoffee(on) {
 }
 
 /* ---------- screen plugins ---------- */
-const capture = require('./src/capture')({ settings: S, saveSettings: (p) => saveSettings(p), toast, hideForCapture, showHub, sendHub });
+const capture = require('./src/capture')({ settings: S, saveSettings: (p) => saveSettings(p), toast, hideForCapture, openPlugin, send });
 capture.register(ipcMain);
 
 function runPlugin(id) {
@@ -216,7 +220,7 @@ function runPlugin(id) {
     case 'colorPicker': return capture.start('color');
     case 'draw': return capture.start('draw');
     case 'coffee': return setCoffee(coffeeId === null);
-    default: return openHub(id);
+    default: return openPlugin(id);
   }
 }
 const shortcutRun = (id) => (id === 'translate' ? capture.start('translate') : runPlugin(id));
@@ -256,10 +260,10 @@ ipcMain.on('settings-save', (e, s) => {
   app.setLoginItemSettings({ openAtLogin: !!settings.autostart });
   if (!settings.clipboardHistory) { clips = []; send('clips', clips); }
   if (old.hideInFullscreen !== settings.hideInFullscreen) updateIsland();
+  if (['monitorAudio', 'monitorNetwork', 'monitorBluetooth', 'monitorPower'].some((k) => old[k] !== settings[k])) system.applyMonitoring();
 });
 ipcMain.handle('ey:catalog', () => CATALOG.map((p) => ({ ...p, key: settings.shortcuts[p.id] || '' })));
 ipcMain.handle('ey:run', (_e, id) => runPlugin(id));
-ipcMain.handle('ey:open-hub', (_e, id) => openHub(id || 'todo'));
 ipcMain.handle('ey:coffee', () => coffeeId !== null);
 ipcMain.handle('ey:fetch-json', (_e, url) => net.fetchJSON(url));
 ipcMain.handle('ey:ip-location', () => net.ipLocation());
@@ -368,7 +372,7 @@ ipcMain.handle('ey:sys:disks', () => sysinfo.disks());
 ipcMain.handle('ey:speed:run', (e) => speed.run((d) => e.sender.send('ey:speed', d)));
 ipcMain.handle('ey:speed:cancel', () => speed.cancel());
 
-const share = createShare((snap) => sendHub('ey:share:update', snap));
+const share = createShare((snap) => send('ey:share:update', snap));
 ipcMain.handle('ey:share:ips', () => share.lanIps());
 ipcMain.handle('ey:share:start', (_e, { mode, files, ip }) => share.start({ mode, files, ip, dir: path.join(app.getPath('downloads'), 'Eyeland Received') }));
 ipcMain.handle('ey:share:stop', () => share.stop());
@@ -379,11 +383,12 @@ function createTray() {
   tray = new Tray(nativeImage.createFromPath(path.join(__dirname, 'assets', 'tray.png')));
   tray.setToolTip('Liquid Island');
   tray.setContextMenu(Menu.buildFromTemplate([
-    { label: 'Open dashboard', click: () => send('open-panel', {}) },
-    { label: 'Open plugins', click: () => openHub('todo') },
+    { label: 'Open dashboard', click: () => openInIsland({}) },
+    { label: 'Open plugins', click: () => openInIsland({ view: 'plugins' }) },
+    { label: 'Open Control Centre', click: () => openInIsland({ cc: true }) },
     { label: 'Quit Liquid Island', click: () => app.quit() },
   ]));
-  tray.on('click', () => send('open-panel', {}));
+  tray.on('click', () => openInIsland({}));
 }
 
 app.whenReady().then(() => {
@@ -391,11 +396,14 @@ app.whenReady().then(() => {
   session.defaultSession.setPermissionRequestHandler((_wc, perm, cb) => cb(perm === 'media'));
   session.defaultSession.setPermissionCheckHandler((_wc, perm) => perm === 'media');
   app.setLoginItemSettings({ openAtLogin: !!settings.autostart });
+  system = createSystem({ nativeDir, send, settings: S, openExternal: (u) => shell.openExternal(u), openPath: (p) => shell.openPath(p) });
   createWindow(); createTray(); startWatchers();
+  system.applyMonitoring(); system.refreshDisplays();
+  for (const ev of ['display-added', 'display-removed', 'display-metrics-changed']) screen.on(ev, () => system.refreshDisplays());
   const errs = registerAll();
   if (Object.keys(errs).length) console.warn('[shortcuts] could not register:', errs);
 });
-app.on('second-instance', () => send('open-panel', {}));
+app.on('second-instance', () => openInIsland({}));
 app.on('will-quit', () => globalShortcut.unregisterAll());
-app.on('before-quit', () => { app.isQuitting = true; share.stop(); procs.forEach((p) => { try { p.kill(); } catch {} }); });
+app.on('before-quit', () => { app.isQuitting = true; share.stop(); if (system) system.shutdown(); procs.forEach((p) => { try { p.kill(); } catch {} }); });
 app.on('window-all-closed', () => app.quit());

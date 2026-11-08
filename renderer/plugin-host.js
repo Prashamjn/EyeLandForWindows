@@ -1,5 +1,15 @@
-// Hub shell: tiny DOM helper, plugin registry, shared context.
-const ey = window.eyeland;
+// Plugin host: tiny DOM helper, plugin registry and the shared context every plugin page receives.
+// Plugin pages are mounted by renderer/workspace.js inside Liquid Island itself (there is no separate plugin window).
+// Plugins talk to the main process only through this `ey` bridge. Settings changes made anywhere in the island are
+// delivered through the in-renderer bus, because the main process never echoes a change back to the window that made it.
+const ey = {
+  ...window.eyeland,
+  on: (ch, cb) => {
+    if (ch === 'settings') return LI.bus.on('settings', cb);
+    if (ch === 'translate:text') return LI.bus.on('translate:open', cb);     // "scan screen" result is delivered to the open page
+    return window.eyeland.on(ch, cb);
+  },
+};
 
 const h = (tag, props, ...kids) => {
   const el = document.createElement(tag);
@@ -28,17 +38,14 @@ const uid = () => Math.random().toString(36).slice(2, 10);
 
 const Plugins = { map: new Map(), register(p) { this.map.set(p.id, p); } };
 
-let toastTimer;
 const ctx = {
-  ey, h, fmtBytes, fmtTime, uid, S: {},
+  ey, h, fmtBytes, fmtTime, uid,
+  get S() { return LI.S; },                         // one settings object for the whole island (updated in place)
   icon: (id) => h('span', { html: ICONS.svg(id), style: 'display:inline-flex' }),
-  save(partial) { Object.assign(ctx.S, partial); ey.send('settings-save', partial); },
-  toast(msg, err) {
-    const t = document.getElementById('toast');
-    t.textContent = msg; t.className = 'on' + (err ? ' err' : '');
-    clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.className = ''), err ? 4200 : 2200);
-  },
-  head: (title, desc) => h('header', { class: 'ph' }, h('h1', {}, title), desc ? h('p', {}, desc) : null),
+  save(partial) { Object.assign(LI.S, partial); ey.send('settings-save', partial); LI.bus.emit('settings', LI.S); },
+  toast: (msg, err) => LI.toast(msg, err),
+  // the workspace header already shows the plugin's name and icon, so a page only adds its one-line description
+  head: (_title, desc) => h('p', { class: 'ph', hidden: !desc }, desc || ''),
   async pick(filters, multi = true) { return ey.invoke('ey:pick', { filters, multi }); },
   // drop zone that accepts files by drag and drop or click-to-browse
   dropZone(label, { filters, multi = true, onFiles }) {
@@ -58,7 +65,7 @@ const ctx = {
 function webUtils_path(file) { return (window.eyeland.pathFor && window.eyeland.pathFor(file)) || file.path || ''; }
 
 // PDF helpers (pdf.js is vendored, so everything works offline)
-if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'vendor/pdf.worker.min.js';
+// (pdf.js and the QR generator are loaded on demand by renderer/workspace.js, which also points pdf.js at its worker)
 const b64ToBytes = (b64) => { const bin = atob(b64); const u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u; };
 ctx.loadPdf = async (b64) => pdfjsLib.getDocument({ data: b64ToBytes(b64), isEvalSupported: false }).promise;
 ctx.renderPage = async (doc, n, scale, type = 'image/jpeg', q = 0.9) => {

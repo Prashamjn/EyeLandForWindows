@@ -31,6 +31,9 @@ body[data-edge="bottom-flush"] #island { border-radius: var(--r) var(--r) 0 0; }
   --w: 620px; --h: 388px; --r: 36px;
   box-shadow: 0 0 0 1px var(--border-hi), 0 26px 60px -8px rgba(0, 0, 0, .6);
 }
+/* workspace (plugin page / Control Centre): the same capsule, grown into a larger rounded panel */
+#island[data-state="full"][data-mode="work"] { --w: 700px; --h: 500px; --r: 34px; }
+body[data-edge="bottom-flush"] #island, body[data-pos="bottom"] #island { top: auto; bottom: 0; }
 
 /* ---------- views: fixed size, centred, cross-faded while the shell morphs (no layout reflow) ---------- */
 .view {
@@ -40,11 +43,12 @@ body[data-edge="bottom-flush"] #island { border-radius: var(--r) var(--r) 0 0; }
 }
 #island[data-state="compact"] .v-compact,
 #island[data-state="mini"] .v-mini,
-#island[data-state="full"] .v-full {
+#island[data-state="full"][data-mode="dash"] .v-full,
+#island[data-state="full"][data-mode="work"] .v-work {
   opacity: 1; visibility: visible; pointer-events: auto; transform: translateX(-50%) scale(1);
   transition-delay: calc(.1s / var(--speed)), 0s, 0s;
 }
-#island[data-state="full"] .v-full { transition-delay: calc(.14s / var(--speed)), 0s, 0s; }
+#island[data-state="full"] .v-full, #island[data-state="full"] .v-work { transition-delay: calc(.14s / var(--speed)), 0s, 0s; }
 
 /* ---------- A. compact: a plain black capsule; indicators only while something is running ---------- */
 .v-compact { width: 176px; height: 30px; display: flex; align-items: center; justify-content: center; gap: 8px; pointer-events: none !important; }
@@ -111,6 +115,8 @@ body[data-edge="bottom-flush"] #island { border-radius: var(--r) var(--r) 0 0; }
 .vw.on { display: block; animation: vwin calc(.2s / var(--speed)) var(--ease-std); }
 @keyframes vwin { from { opacity: 0; } }
 
+body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after { transition-duration: .01ms !important; transition-delay: 0s !important; animation-duration: .01ms !important; animation-delay: 0s !important; }
+body.reduce-motion .view { transform: translateX(-50%) !important; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: .01ms !important; transition-delay: 0s !important; animation-duration: .01ms !important; animation-delay: 0s !important; }
   .view { transform: translateX(-50%) !important; }

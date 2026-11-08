@@ -5,13 +5,17 @@
   const ey = window.eyeland;                              // generic bridge (same one the plugin hub uses)
 
   /* ================= views + nav ================= */
+  // 'control' is not a dashboard view: it opens the Control Centre workspace (LI.workspace.openCC)
   const VIEWS = [
-    ['home', 'home', 'Home'], ['plugins', 'grid', 'Plugins'], ['timer', 'timer', 'Timer'],
+    ['home', 'home', 'Home'], ['plugins', 'grid', 'Plugins'], ['control', 'control', 'Control Centre'], ['timer', 'timer', 'Timer'],
     ['clips', 'clipboard', 'Clipboard'], ['tasks', 'todo', 'Tasks'], ['settings', 'sliders', 'Settings'],
   ];
   const nav = $('#nav');
+  let currentView = 'home';
   VIEWS.forEach(([id, ic, label]) => nav.append(el('button', { 'data-view': id, title: label, 'aria-label': label, html: icon(ic) })));
   function show(id) {
+    if (id === 'control') return LI.workspace.openCC();
+    currentView = id;
     $$('.vw').forEach((v) => v.classList.toggle('on', v.dataset.view === id));
     $$('button', nav).forEach((b) => b.classList.toggle('on', b.dataset.view === id));
   }
@@ -143,25 +147,39 @@
     }
   }
 
-  /* ================= quick actions (only things that really work today) ================= */
+  /* ================= quick actions: the plugins the user pinned (default: mute, coffee, text, colour) ================= */
   const quick = $('#quick');
-  const QA = [
-    { id: 'mute', label: () => (sys.muted ? 'Unmute' : 'Mute'), icon: () => volIcon(sys.vol ?? 0, sys.muted), on: () => sys.muted, run: () => api.setSystem('mute', 0) },
-    { id: 'coffee', label: () => 'Coffee', icon: () => 'coffee', on: () => LI.state.coffee, run: () => api.run('coffee') },
-    { id: 'textExtract', label: () => 'Text', icon: () => 'textExtract', run: () => { api.run('textExtract'); LI.island.close(); } },
-    { id: 'colorPicker', label: () => 'Color', icon: () => 'colorPicker', run: () => { api.run('colorPicker'); LI.island.close(); } },
-  ];
-  QA.forEach((q) => quick.append(el('button', { class: 'qa-btn', 'data-id': q.id })));
+  const PSEUDO = { mute: { label: () => (sys.muted ? 'Unmute' : 'Mute'), icon: () => volIcon(sys.vol ?? 0, sys.muted), on: () => sys.muted, run: () => api.setSystem('mute', 0) } };
+  const pinnedList = () => (LI.S.pinned || LI.workspace.PINNED_DEFAULT).slice(0, 4);
+  const qaItem = (id) => {
+    if (PSEUDO[id]) return PSEUDO[id];
+    const p = pl.items.find((x) => x.id === id) || (window.CATALOG || []).find((x) => x.id === id);
+    if (!p) return null;
+    const short = { textExtract: 'Text', colorPicker: 'Color', youtube: 'YouTube', compress: 'Reducer', convert: 'Convert', sysinfo: 'System', todo: 'Tasks', share: 'Share' }[id];
+    return {
+      label: () => short || p.name, icon: () => id, on: () => id === 'coffee' && LI.state.coffee,
+      run: () => {
+        // screen overlays and the Coffee toggle are instant; everything else opens its page inside the island
+        if (p.kind === 'action') { api.run(id); LI.island.close(); } else if (p.kind === 'toggle') api.run(id); else LI.workspace.openPlugin(id);
+      },
+    };
+  };
+  let qaSig = '';
   function updateQuick() {
-    QA.forEach((q) => {
-      const b = quick.querySelector(`[data-id="${q.id}"]`);
+    const ids = pinnedList();
+    if (ids.join() !== qaSig) {
+      qaSig = ids.join();
+      quick.replaceChildren(...ids.map((id) => el('button', { class: 'qa-btn', 'data-id': id })));
+    }
+    ids.forEach((id) => {
+      const q = qaItem(id), b = quick.querySelector(`[data-id="${id}"]`); if (!q || !b) return;
       b.innerHTML = icon(q.icon()) + `<span>${q.label()}</span>`;
       b.classList.toggle('on', !!(q.on && q.on()));
       b.setAttribute('aria-pressed', q.on ? String(!!q.on()) : 'false');
       b.setAttribute('aria-label', q.label());
     });
   }
-  quick.addEventListener('click', (e) => { const b = e.target.closest('.qa-btn'); if (b) QA.find((q) => q.id === b.dataset.id).run(); });
+  quick.addEventListener('click', (e) => { const b = e.target.closest('.qa-btn'); const q = b && qaItem(b.dataset.id); if (q) q.run(); });
 
   /* ================= plugin navigation (reads the existing catalog; execution stays in the main process) ================= */
   const plCats = $('#plCats'), plGrid = $('#plGrid');
@@ -172,13 +190,17 @@
     if (sig === pl.sig) return;
     pl.sig = sig; pl.items = cat;
     const groups = [...new Set(cat.map((p) => p.group))];
-    if (!groups.includes(pl.cat)) pl.cat = groups[0];
-    paintPlugins();
+    if (pl.cat !== FAV && !groups.includes(pl.cat)) pl.cat = groups[0];
+    paintPlugins(); updateQuick();
   }
+  const FAV = 'Favourites';
   function paintPlugins() {
-    const groups = [...new Set(pl.items.map((p) => p.group))];
+    const favs = (LI.S.favorites || []).filter((id) => pl.items.some((p) => p.id === id));
+    const groups = [...(favs.length ? [FAV] : []), ...new Set(pl.items.map((p) => p.group))];
+    if (!groups.includes(pl.cat)) pl.cat = groups[0];
     plCats.replaceChildren(...groups.map((g) => el('button', { class: 'pl-cat' + (g === pl.cat ? ' on' : ''), 'data-cat': g, role: 'tab', 'aria-selected': String(g === pl.cat), text: g })));
-    plGrid.replaceChildren(...pl.items.filter((p) => p.group === pl.cat).map((p) => el('button', {
+    const shown = pl.cat === FAV ? favs.map((id) => pl.items.find((p) => p.id === id)) : pl.items.filter((p) => p.group === pl.cat);
+    plGrid.replaceChildren(...shown.map((p) => el('button', {
       class: 'pl-card' + (p.id === 'coffee' && LI.state.coffee ? ' on' : ''), 'data-id': p.id,
       title: p.name + (p.key ? `  (${p.key})` : '') + (p.desc ? `\n${p.desc}` : ''), 'aria-label': p.name,
       html: icon(p.id),
@@ -187,8 +209,7 @@
   plCats.addEventListener('click', (e) => { const b = e.target.closest('.pl-cat'); if (b) { pl.cat = b.dataset.cat; paintPlugins(); } });
   plGrid.addEventListener('click', (e) => {
     const b = e.target.closest('.pl-card'); if (!b) return;
-    api.run(b.dataset.id);                                                // same pathway as before: main.runPlugin(id)
-    if (b.dataset.id !== 'coffee') LI.island.close();
+    LI.workspace.openPlugin(b.dataset.id);                                // every plugin opens inside the island
   });
 
   /* ================= coffee mode state (comes from the main process) ================= */
@@ -202,10 +223,11 @@
   function onOpen() { paintClock(); refreshCatalog(); loadWeather(); }
   function onSettings(prev) {
     paintBattery(batteryLevel, batteryCharging);
+    paintPlugins(); updateQuick();
     if (prev && wxKey() !== wx.key) loadWeather(true);
   }
   let batteryLevel = null, batteryCharging = false;
   function setBattery(level, charging) { batteryLevel = level; batteryCharging = charging; paintBattery(level, charging); }
 
-  LI.dashboard = { show, onOpen, onSettings, onSystem, setCoffee, setBattery, loadWeather, refreshCatalog, paintClock, paintSystem, paintWeather };
+  LI.dashboard = { show, current: () => currentView, onOpen, onSettings, onSystem, setCoffee, setBattery, loadWeather, refreshCatalog, paintClock, paintSystem, paintWeather };
 })();

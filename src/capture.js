@@ -103,7 +103,7 @@ module.exports = function createCapture(ctx) {
     if (session) return;
     const d = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
     session = { mode, opts, display: d };
-    ctx.hideForCapture(true, mode !== 'draw');
+    ctx.hideForCapture(true);
     await sleep(170);
     if (mode !== 'draw') {
       try {
@@ -156,7 +156,7 @@ module.exports = function createCapture(ctx) {
       const text = await extractText(piece);
       if (!text) return ctx.toast({ icon: 'warn', text: 'No text found' });
       if (mode === 'translate' || opts.returnTo === 'translate') {
-        ctx.showHub('translate'); ctx.sendHub('translate:text', { text });
+        ctx.openPlugin('translate', { text });
         return ctx.toast({ icon: 'check', text: 'Text ready to translate' });
       }
       clipboard.writeText(text);
