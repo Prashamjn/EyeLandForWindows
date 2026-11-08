@@ -7,7 +7,7 @@ module.exports = async (c) => {
 
   // ---- main-process window properties
   const b = win.getBounds(); const disp = require('electron').screen.getPrimaryDisplay().bounds;
-  ok('window: 700x460, horizontally centred, top edge', b.width === 700 && b.height === 460 && b.x === Math.round(disp.x + (disp.width - 700) / 2) && b.y === disp.y, JSON.stringify(b));
+  ok('window: 760x620 stable canvas, horizontally centred, placed at the 10 px top gap', b.width === 760 && b.height === 620 && b.x === Math.round(disp.x + (disp.width - 760) / 2) && b.y === disp.y + 10, JSON.stringify(b));
   ok('window: always on top, visible, transparent frameless', win.isAlwaysOnTop() && win.isVisible());
   ok('main.js pins userData to <appData>/eyeland (existing data folder)', c.PINNED_UD === path.join(c.appData, 'eyeland'), c.PINNED_UD);
 
