@@ -100,10 +100,13 @@ function createSystem({ nativeDir, send, settings, openExternal, openPath }) {
       case 'audio.setOutput': return H.audio.request('setOutput', args);
       case 'mic.setMute': return H.audio.request('setMicMute', args);
       case 'bri.set': return H.power.request('setBrightness', args);
-      case 'wifi.scan': return H.net.request('networks', { rescan: true }, 15000);
+      case 'wifi.scan': {
+        const r = await H.net.request('networks', { rescan: true }, 15000);
+        return r && r.limited && r.reason === 'location_denied' ? { ...r, action: actionFor('location_denied') } : r;     // scanning refused: saved networks only, with the fix offered
+      }
       case 'wifi.setPower': return H.net.request('setRadio', args, 25000);
-      case 'wifi.connect': cc({ kind: 'progress', key: 'wifi', phase: 'connecting', ssid: args.ssid }); return H.net.request('connect', args, 30000);
-      case 'wifi.disconnect': return H.net.request('disconnect');
+      case 'wifi.connect': cc({ kind: 'progress', key: 'wifi', phase: 'connecting', ssid: args.ssid }); return H.net.request('connect', args, 40000);         // the helper itself waits for Windows' completion + verifies the adapter (<= 28 s)
+      case 'wifi.disconnect': return H.net.request('disconnect', {}, 15000);
       case 'bt.setPower': return H.bt.request('setRadio', args, 25000);
       case 'bt.scan': return H.bt.request('scan', args);
       case 'bt.stopScan': return H.bt.request('stopScan');

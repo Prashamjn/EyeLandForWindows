@@ -6,7 +6,7 @@
 (() => {
   const { $, el, icon, volIcon, debounce } = LI;
   const st = { audio: null, mic: null, wifi: null, vpn: null, bt: null, battery: null, powermode: null, bri: undefined, briError: null, displays: null, unavailable: {} };
-  const ui = { pane: null, nets: null, scanning: false, picked: null, pwd: '', busy: {}, err: {}, act: {}, found: [], btScanning: false, loaded: false };
+  const ui = { limited: null, pane: null, nets: null, scanning: false, picked: null, pwd: '', busy: {}, err: {}, act: {}, found: [], btScanning: false, loaded: false };
   let root = null, over = null, body = null, dragging = false;
   const MODES = [['efficiency', 'Best power efficiency', 'leaf'], ['balanced', 'Balanced', 'balance'], ['performance', 'Best performance', 'rocket']];
   const HEADSET = /head(phone|set)|buds|airpods|earbud|earphone|pods/i;
@@ -19,6 +19,7 @@
     return r;
   };
   const unavailable = (k) => st.unavailable[k];
+  const LOCATION = { op: 'settings.open', page: 'location', label: 'Open location settings' };
   const HELPER_KEY = { audio: 'audio', net: 'net', bt: 'bt', power: 'power' };
   // an error from Windows is shown as received; when a code has a fix (a Settings page) a button for it is shown with the message
   const fail = (key, r) => { ui.err[key] = r.error || 'That did not work'; ui.act[key] = r.action || null; };
@@ -31,7 +32,7 @@
   /* ================= state ================= */
   LI.bus.on('cc', (m) => {
     if (m.kind === 'state') { st[m.key] = m.data; if (m.key === 'wifi' && ui.busy.wifi && m.data.state !== 'connecting') { ui.busy.wifi = null; } }
-    else if (m.kind === 'progress' && m.key === 'wifi') { ui.busy.wifi = m.phase === 'connecting' ? m.ssid : null; if (m.phase === 'failed') ui.err.wifi = 'Could not connect to ' + (m.ssid || 'the network') + '. Check the password and try again.'; }
+    else if (m.kind === 'progress' && m.key === 'wifi') { ui.busy.wifi = m.phase === 'connecting' ? m.ssid : null; if (m.phase === 'failed') { ui.err.wifi = 'Windows could not connect to ' + (m.ssid || 'the network') + '.'; ui.act.wifi = null; } }
     else if (m.kind === 'scan' && m.key === 'bt') { ui.found = m.data.devices || []; ui.btScanning = !m.data.done; }
     else if (m.kind === 'helper' && m.up === false && m.failed) st.unavailable[HELPER_KEY[m.helper]] = { message: 'This helper stopped working.' };
     else if (m.kind === 'helper' && m.up === true && st.unavailable[HELPER_KEY[m.helper]]) { delete st.unavailable[HELPER_KEY[m.helper]]; load(); }       // recovered: stop showing the old failure
@@ -177,9 +178,11 @@
       sw(w.radio === 'on', () => toggleRadio('wifi', w.radio !== 'on'), ui.busy.wifiradio || w.radio === 'unsupported')));
     if (ui.err.wifi && w.radio !== 'on') p.append(errNote('wifi'));
     if (w.radio === 'error') return [p, note('Windows could not report the Wi-Fi radio: ' + (w.radioError || 'unknown error'), 'bad')];
-    if (w.radio === 'off' || w.radio === 'disabled') return [p, note('Wi-Fi is turned off.')];
+    if (w.radio === 'off' || w.radio === 'disabled') return [p, note(w.hardwareOff ? 'Wi-Fi is switched off by a hardware switch or key on this PC.' : 'Wi-Fi is turned off.')];
+    if (w.state === 'connected' && w.ssidError === 'location_denied' && !w.ssid) p.append(el('div', { class: 'cc-errbox' }, note('Windows hides the network name from desktop apps until location access is allowed.'), btn(LOCATION.label, 'sm', () => call(LOCATION.op, { page: LOCATION.page }, { quiet: true }))));
     const head = el('div', { class: 'cc-sec' }, el('span', { text: 'Available networks' }), btn(ui.scanning ? 'Scanning…' : 'Scan', 'sm', () => scanWifi(), ui.scanning));
     const list = el('div', { class: 'cc-list' });
+    if (ui.limited) list.append(el('div', { class: 'cc-errbox' }, note('Windows is blocking Wi-Fi scanning for desktop apps, so only your saved networks are listed.'), ...(ui.limited.action ? [btn(ui.limited.action.label, 'sm', () => call(ui.limited.action.op, { page: ui.limited.action.page }, { quiet: true }))] : [])));
     if (ui.err.wifi) list.append(errNote('wifi'));
     (ui.nets || []).forEach((n) => {
       const picked = ui.picked === n.ssid, connecting = ui.busy.wifi === n.ssid || (n.connected && w.state === 'connecting');
@@ -188,7 +191,8 @@
       r.classList.toggle('on', n.connected); r.tabIndex = 0;
       const act = () => {
         if (n.connected || connecting) return;
-        if (n.security === 'enterprise' && !n.known) { ui.picked = null; ui.err.wifi = 'This network needs a work or school account. Connect to it from Windows settings.'; return paint(true); }
+        if (n.security === 'enterprise' && !n.known) { ui.picked = null; ui.err.wifi = 'This network needs a work or school account. Connect to it from Windows settings.'; ui.act.wifi = null; return paint(true); }
+        if (n.security === 'wep' && !n.known) { ui.picked = null; ui.err.wifi = 'This network uses WEP, which Liquid Island does not set up. Connect to it from Windows settings.'; ui.act.wifi = null; return paint(true); }
         if (n.secure && !n.known) { ui.picked = picked ? null : n.ssid; ui.pwd = ''; ui.err.wifi = ''; return paint(true); }
         connectWifi(n);
       };
@@ -210,7 +214,7 @@
   }
   async function connectWifi(n, password) {
     ui.err.wifi = ''; ui.busy.wifi = n.ssid; ui.picked = null; ui.pwd = ''; paint(true);   // user action: repaint even though the password field has focus
-    const r = await call('wifi.connect', { ssid: n.ssid, security: n.security, known: !!n.known, password: password || '' }, { quiet: true });
+    const r = await call('wifi.connect', { ssid: n.ssid, security: n.security, known: !!n.known, profile: n.known && n.profile ? n.profile : '', password: password || '' }, { quiet: true });
     if (!r.ok) { ui.busy.wifi = null; fail('wifi', r); }
     paint(true); setTimeout(() => scanWifi(true), 1500);
   }
@@ -219,7 +223,7 @@
     ui.scanning = true; if (!silent) paint();
     const r = await call('wifi.scan', {}, { quiet: true });
     ui.scanning = false;
-    if (r.ok) ui.nets = r.data.networks || []; else { ui.nets = ui.nets || []; fail('wifi', r); }
+    if (r.ok) { ui.nets = r.data.networks || []; ui.limited = r.data.limited ? { action: r.data.action || LOCATION } : null; } else { ui.nets = ui.nets || []; fail('wifi', r); }
     if (ui.pane === 'wifi') paint();
   }
 

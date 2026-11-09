@@ -90,3 +90,16 @@ public class LiError : Exception {
     return new LiError("com", what + " failed: " + detail + " (0x" + hr.ToString("X8") + ")");
   }
 }
+
+// Thread-safe bridge from native callback threads (WLAN, WinRT) to the PowerShell main loop. PowerShell cannot subscribe to WinRT events,
+// but it can subscribe to this ordinary .NET event with Register-ObjectEvent and then Wait-Event (no polling, no CPU while idle).
+public class LiSignalArgs : EventArgs {
+  public string Tag, Id, Name, Extra;
+  public LiSignalArgs(string tag) { Tag = tag; }
+}
+public class LiHub {
+  public static readonly LiHub Instance = new LiHub();
+  public event EventHandler<LiSignalArgs> Signal;
+  public void Raise(LiSignalArgs a) { EventHandler<LiSignalArgs> h = Signal; if (h != null) { try { h(this, a); } catch (Exception) { } } }
+  public void Raise(string tag) { Raise(new LiSignalArgs(tag)); }
+}

@@ -142,9 +142,11 @@ async function net() {
   if (!g.ok) { check('wifi', 'get state', 'FAIL', why(g)); return h; }
   const { wifi: w, vpn } = g.data;
   check('wifi', 'get state', 'INFO', w);
-  if (w && w.state === 'connected' && !w.ssid) check('wifi', 'connected but SSID is empty', 'FAIL', 'WlanQueryInterface(current_connection) failed silently: the UI would say "Connected to null"');
+  if (w && w.state === 'connected' && !w.ssid) check('wifi', 'connected but SSID is unreadable', 'WARN', `ssidError=${w.ssidError}. The UI says "Connected" and offers the location-settings fix; nothing is invented`);
+  if (w && w.radioError) check('wifi', 'radio query error is reported (not hidden as "unsupported")', 'WARN', w.radioError);
   const n = await ask(h, 'wifi.scan', 'networks', {}, 30000);
   if (!n.ok) check('wifi', 'scan networks', 'FAIL', why(n));
+  else if (n.data.limited) check('wifi', 'scan networks', 'WARN', `Windows refused scanning (${n.data.reason}, scan=${n.data.scanCode}, list=${n.data.listCode}); the helper fell back to ${n.data.networks.length} saved networks and reported it`);
   else check('wifi', 'scan networks', n.data.networks.length ? 'PASS' : 'WARN', n.data.networks.length ? `${n.data.networks.length} networks, ${n.ms} ms` : '0 networks. Compare with the raw WlanGetAvailableNetworkList code above: if it is 5 the helper is hiding an access-denied error');
   const bad = (n.ok ? n.data.networks : []).filter((x) => { try { V['wifi.connect']({ ssid: x.ssid, security: x.security, known: x.known, password: '' }); return false; } catch { return true; } });
   check('wifi', 'validator accepts every scanned network as a connect request', bad.length ? 'FAIL' : 'PASS', bad.map((x) => x.ssid));

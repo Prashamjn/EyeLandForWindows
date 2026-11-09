@@ -8,7 +8,7 @@ const str = (v, re, what, max = 400) => { if (typeof v !== 'string' || v.length 
 const AUDIO_ID = /^\{[0-9a-fA-F.]+\}\.\{[0-9a-fA-F-]+\}$/;                 // MMDevice endpoint id
 const BT_ID = /^[\w&#:.{}\\-]+$/;                                           // device instance path, e.g. Bluetooth#Bluetooth...
 const MODES = ['efficiency', 'balanced', 'performance'];
-const SECURITY = ['open', 'wpa2', 'wpa3', 'enterprise', 'owe'];
+const SECURITY = ['open', 'wpa', 'wpa2', 'wpa3', 'wep', 'enterprise', 'owe', 'unknown'];   // 'unknown': a saved profile listed without a scan (Windows denied scanning)
 
 const ssid = (v) => {
   if (typeof v !== 'string' || !v.length || Buffer.byteLength(v, 'utf8') > 32 || /[\u0000-\u001f]/.test(v)) throw bad('Network name is not valid');
@@ -29,7 +29,13 @@ const V = {
   'wifi.connect': (a) => {
     const security = a && a.security;
     if (!SECURITY.includes(security)) throw bad('Unknown security type');
-    const out = { ssid: ssid(a.ssid), security, known: a.known === true, password: '' };
+    const known = a.known === true;
+    if (security === 'unknown' && !known) throw bad('An unscanned network must be a saved one');
+    const out = { ssid: ssid(a.ssid), security, known, password: '', profile: '' };
+    if (a.profile != null && a.profile !== '') {
+      if (!known || typeof a.profile !== 'string' || a.profile.length > 255 || /[\u0000-\u001f]/.test(a.profile)) throw bad('Profile name is not valid');
+      out.profile = a.profile;
+    }
     if (a.password != null) {
       if (typeof a.password !== 'string' || a.password.length > 64 || /[\u0000-\u001f]/.test(a.password)) throw bad('Password is not valid');
       out.password = a.password;
