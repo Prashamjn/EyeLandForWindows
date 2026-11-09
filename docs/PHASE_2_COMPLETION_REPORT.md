@@ -173,25 +173,130 @@ Screenshots are in `docs/phase2-screenshots/` and show **simulated data**.
 - Keyboard navigation is partial: tiles and rows are focusable, Enter activates rows, Esc steps back; I did not do a full tab-order and screen-reader pass.
 - Real animation smoothness on Windows GPUs was not measured (only frame-sampled the layout in Chromium under software rendering).
 
-## 15. Windows verification checklist (please run, in this order)
-1. `npm install && npm start` on Windows 11. Watch the terminal for `[native:audio|net|bt|power]` lines; any `Add-Type failed` is a C# compile problem on real csc.
-2. Volume slider, mute, keyboard volume keys; **switch output to a second device**; unplug/plug headphones (expect the notice).
-3. Wi-Fi: toggle, scan, connect to a saved network, connect to a new WPA2 network, wrong password, disconnect.
-4. Bluetooth: toggle, paired list, connect/disconnect a headset, search + pair a device, turn a device off (expect the notice).
-5. Power mode switch on a laptop on AC and on battery; battery/charger notices.
-6. Brightness slider, then Fn keys (slider should follow); row hidden on a desktop.
-7. Proton VPN: connect in its app, confirm the tile and notice follow; if not, check the adapter name (`Get-NetAdapter`).
-8. Top gap on your real display(s), DPI scaling 100/150 %, a second monitor, and a full-screen game (island should hide).
-9. Open each plugin once; try file pickers (Converter, Reducer, Print), Voice memo recording, screen tools + overlay, Translate scan.
-Likely trouble spots: COM vtable/struct layouts in `Audio.cs`/`Wlan.cs`, `Register-ObjectEvent` on WinRT events in `bt.ps1`, `BluetoothSetServiceState` behaviour per headset,
-`PowerGetUserConfigured*` availability, and a headset that auto-reconnects right after the app disconnects it.
+## 15. Windows 11 test plan
 
-## 16. Running and reviewing
-```bash
+Everything in sections 5-7 that touches Windows is **written but unverified on hardware**. This section is the complete, ordered plan
+for verifying it. Please keep the simulated helpers **out** of these tests (see 15.2).
+
+### 15.1 Requirements: administrator rights, hardware, extra software
+| Need | Detail |
+|---|---|
+| OS | Windows 11 (the power-mode APIs are Windows 11 only; the rest should work on Windows 10, untested) |
+| Software to install | Git, Node.js **22 LTS** (needed for the `node --test` glob in `npm run test:unit`; Electron 33 is downloaded by `npm install`), a terminal. Windows PowerShell 5.1 is built in and is **required** (the helpers run in `powershell.exe`; WinRT does not work in PowerShell 7). Proton VPN for Windows only for test 7 |
+| Administrator rights | **None are intended.** Run everything as a normal user first. Suspects that may need elevation (please test both ways and tell me): **(a) joining a *new* Wi-Fi network**: the helper saves an all-user profile (`WlanSetProfile` flags 0), which can fail with "code 5" (access denied) for a standard user; the fix would be a per-user profile (flag `2`, one line in `native/cs/Wlan.cs`). **(b) the brightness slider**: `WmiSetBrightness` works unelevated on most laptops but some OEM drivers require admin. Joining a *saved* network, Bluetooth, audio, power mode and radio switches should not need admin |
+| Privacy permission (not admin) | *Settings > Privacy & security > Radios* must allow apps to control radios, or the Wi-Fi/Bluetooth switches report "Windows is blocking radio control". *Settings > Privacy & security > Microphone* is **not** needed (no audio is opened) |
+| Hardware | Wi-Fi adapter (Wi-Fi tests); Bluetooth radio **and** a Bluetooth headset/earbuds that you can power off (Bluetooth, audio-switch tests); a second sound output (headphones, HDMI/USB audio) for output switching; a **laptop with a battery and built-in screen** for battery, charger, power-mode-on-battery and brightness tests (a desktop only shows "No battery" and hides brightness, which is also worth checking); a microphone; a **second monitor** for multi-monitor tests (a single monitor still covers most of the placement tests) |
+| Additional accounts / services | A second Wi-Fi network you can join, ideally a new WPA2 one with a known password and one you can deliberately mistype; Proton VPN installed and a Proton account (the app does the login, this app never touches it) |
+| Antivirus | PowerShell scripts that compile C# at start-up (`Add-Type`) can trigger heuristics in some AV/EDR products. If a helper never starts, check the AV log |
+
+### 15.2 Setup, tests and logging (copy and paste; PowerShell or Windows Terminal)
+```powershell
+git clone <your-local-repo> ; cd <your-local-repo>        # or use your existing clone
 git checkout feature/phase-2-embedded-plugins-control-center
-npm install && npm start                      # Windows 11 for the real Control Centre
-npm run test:unit                             # no Electron needed
-# UI scenarios (Linux/CI, simulated helpers): see tools/ui-harness/README.md
-git log --oneline main..HEAD                  # review in 3 commits
+npm install
+npm run test:unit                      # Node unit tests: 19 expected to pass (no Windows APIs involved)
+npm start                              # runs the real app with the REAL PowerShell helpers
 ```
-Branch `feature/phase-2-embedded-plugins-control-center`; base `db695b2`; commits: `1c41cc1` (native + system layer), `9d24f8a` (renderer, main, preload), and the tests/docs commit that contains this file. **Nothing has been pushed.**
+**Make sure the test-only switch is not set**, otherwise the app silently uses the simulated helpers:
+```powershell
+echo "LI_NATIVE_MOCK=[$env:LI_NATIVE_MOCK]"     # must print empty brackets: LI_NATIVE_MOCK=[]
+Remove-Item Env:LI_NATIVE_MOCK -ErrorAction SilentlyContinue ; Remove-Item Env:LI_MOCK_CTL -ErrorAction SilentlyContinue
+```
+`LI_NATIVE_MOCK` (read in `src/system/index.js` / `helper.js`) exists only so the UI tests can run on Linux; the real helpers are the default and nothing in the app sets it.
+Watch the terminal that runs `npm start`: each helper writes `[native:audio]`, `[native:net]`, `[native:bt]`, `[native:power]` lines to stderr.
+`Add-Type failed: ...` means the C# did not compile on the real compiler (send me the full line).
+
+Optional UI scenarios on Windows (the plugin and geometry scenarios do not need the simulated helpers; **never run `07-control-centre` on Windows, it asserts simulated data**; this harness has not been run on Windows before):
+```powershell
+$env:LI_SCRIPT = "$PWD\tools\ui-harness\scenarios\04-plugins-embedded.js" ; $env:LI_OUT = "$PWD\shots" ; npx electron tools/ui-harness/run.js
+$env:LI_SCRIPT = "$PWD\tools\ui-harness\scenarios\08-geometry-and-interaction.js" ; npx electron tools/ui-harness/run.js
+Remove-Item Env:LI_SCRIPT, Env:LI_OUT
+```
+**Poking a helper by hand** (best way to isolate a native problem; type a line and press Enter, `Ctrl+C` to quit):
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\native\audio.ps1
+{"rid":1,"cmd":"get"}
+{"rid":2,"cmd":"setVolume","value":30}
+```
+Same for `net.ps1` (`get`, `networks` with `"rescan":true`, `vpn`), `bt.ps1` (`get`, `scan` with `"seconds":10`), `power.ps1` (`get`, `setMode` with `"mode":"balanced"`). Replies are `{"rid":N,"ok":true,"data":...}` or `{"rid":N,"ok":false,"error":"...","code":"..."}`; unprompted lines `{"ev":...}` are events.
+
+### 15.3 Ordered checklist
+Mark each item PASS / FAIL / N-A and note the exact on-screen text or terminal line for any FAIL. Order matters: earlier items prove the basics the later ones rely on. The Control Centre opens from the toggle-switches icon (third from the left) in the bottom navigation, or from the tray menu (*Open Control Centre*).
+
+**A. Start-up and baseline**
+1. `npm start`: capsule appears centred, **10 px below the top edge**, full pill shape. No `Add-Type failed` or red errors in the terminal. Wait ~10 s (helpers start staggered; notifications are suppressed for ~8 s).
+2. Hover the capsule: it expands to the dashboard. Move away: it closes. Open Task Manager and note the app's CPU and the number of `powershell.exe` children (expect 6 at most: audio, net, bt, power, sys, media). Note start-up CPU for the first 10 s and idle CPU after a minute.
+3. Open the Control Centre. Every tile should say something real within a few seconds (not "Loading…" and not "Unavailable"). Note any tile that stays "Unavailable" and which helper line in the terminal matches.
+
+**B. Volume, mute, microphone (Core Audio)**
+4. Drag the Volume slider: Windows' volume flyout shows the same number. Press the keyboard volume keys: the slider and the number follow within about a second.
+5. Mute button: Windows shows muted; press the keyboard mute key: the button follows.
+6. Microphone tile: shows your default recording device. Toggle its switch: Settings > System > Sound > Input shows the device muted; toggle in Windows: the tile follows and a "Microphone muted/on" notice appears. Check Windows' microphone-in-use indicator **never** appears because of this app.
+
+**C. Sound output switching (uses the undocumented `IPolicyConfig`)**
+7. Open "Sound output": all active output devices are listed, with the default marked.
+8. Click another device: the **Windows Settings > System > Sound > Output** default really changes (play audio to hear it), the Control Centre marks it, and a "Switched to <device>" notice appears. Switch back.
+9. Plug in headphones (or switch a Bluetooth headset on): "<device> connected" notice and the list updates. Unplug: "<device> disconnected" and the default falls back. Confirm the headphone icon appears for headphones/headsets (not only by name).
+10. Try switching while audio is playing; verify no crash in the terminal. Report which device types worked (speakers, headphones, HDMI, Bluetooth).
+
+**D. Wi-Fi (Native Wifi API)**
+11. Wi-Fi tile shows your current network; open the pane: a list of nearby networks with signal bars, your network marked "Connected".
+12. Toggle the Wi-Fi switch **off**: Windows' Wi-Fi turns off (check the taskbar), notice "Wi-Fi disabled". If you see "Windows is blocking radio control", enable Settings > Privacy & security > Radios and retry. Toggle **on**: "Wi-Fi enabled".
+13. Connect to a **saved** network (one Windows already knows) by clicking it: "Connecting to network…" then "Connected to <name>" only when Windows reports it.
+14. Connect to a **new WPA2 network**: click it, the password box appears, enter a **wrong** password: expect "Could not connect…", the previous state unchanged, and nothing shown as connected. **If you see "Windows rejected the network settings (code 5)", note it: that is the all-user profile / admin suspect above; retry once from an elevated app (Run as administrator) and tell me whether it then works.**
+15. Repeat with the **correct** password: connects, notice shown. Confirm in Windows Settings that the profile exists (that is expected; the app does not store the password).
+16. Click an enterprise (802.1X) network if one is nearby: expect the "work or school account" message, no connection attempt. Click **Disconnect**: "Disconnected from Wi-Fi".
+17. Check the password is never written to the terminal while doing steps 14-15.
+
+**E. Bluetooth (WinRT + `BluetoothSetServiceState`)**
+18. Bluetooth tile and pane: radio state correct; paired devices listed with the correct connected/paired state (compare with Settings > Bluetooth & devices).
+19. Toggle the switch off/on: Windows follows, notices "Bluetooth disabled/enabled".
+20. Headset **Connect** (headset powered on, paired, currently disconnected): "Connecting…" then connected **only** after Windows confirms; notice "<name> connected". Audio output may switch to it (check 9).
+21. **Disconnect** the headset from the app: it disconnects, notice "<name> disconnected". Watch for 30 s: **does the headset reconnect by itself?** (known risk; report yes/no and the headset model).
+22. Power the headset off and on by hand: notices appear for both without clicking anything in the app (event-driven path).
+23. **Search** with a device in pairing mode: it appears under "Add a device"; **Pair** it. If Windows shows its own pairing prompt, report what it asked. Low-energy device (mouse/keyboard) rows must show "Auto" instead of a Connect button.
+
+**F. Proton VPN (observation only)**
+24. With Proton VPN **not running**: VPN tile says "Proton VPN · Off", pane says "Not running", button reads "Start Proton VPN". Click it: the Proton VPN app launches.
+25. Connect inside the Proton app: within a few seconds the tile becomes "Connected" and a "Proton VPN connected" notice appears. Disconnect in the Proton app: "Proton VPN disconnected". If it never turns to Connected, run `Get-NetAdapter | Select Name, InterfaceDescription, Status` and send me the Proton adapter's **Name** and **InterfaceDescription** (the detection matches "protonvpn"/"proton vpn" in either; I only need to widen it).
+26. Confirm the app never asks for or shows Proton credentials, server names or locations.
+27. If Proton VPN is not installed on a test PC: tile says "Proton VPN not installed"; never "Connected".
+
+**G. Battery, charger, power mode, brightness (laptop)**
+28. Battery tile and pane: percentage matches the taskbar; "Charging"/"On battery"/"Plugged in" correct; time remaining shows only on battery.
+29. Unplug and plug the charger: notices "Charger disconnected/connected <n>%" within a couple of seconds. (Percentage itself refreshes about once a minute.)
+30. Power mode: all three modes listed; click one: the setting really changes in Settings > System > Power & battery > Power mode, and the notice appears. Try each on AC and on battery. If Windows refuses one on your device the row must **not** become current; send me the error text.
+31. Brightness slider: moves the built-in panel; press Fn brightness keys: slider follows. On a desktop or an external-monitor-only setup the brightness row must be hidden. If setting brightness fails, retry elevated and tell me.
+
+**H. Displays and multi-monitor positioning**
+32. Displays pane lists each monitor with resolution, refresh rate (not "?") and scale. Compare with Settings > System > Display.
+33. Single monitor: set *Settings > Top gap* to 0, 10 and 30 px: the capsule moves accordingly; at 0 it docks flat to the edge. Check at display scaling 100%, 125% and 150%: the gap should look the same.
+34. Set *Settings > Edge* to Bottom: capsule sits at the bottom with the same gap and grows upward. Set back to Top.
+35. **Second monitor** (if available): *Settings > Display* lists both; choose the secondary: the capsule moves to the centre-top of that monitor. Unplug it: the capsule returns to the primary and nothing is left off-screen; plug it back: it returns to the chosen monitor. Change a monitor's resolution: the capsule re-centres. Try monitors of different sizes and with the secondary on the left of the primary (negative coordinates). Note the "<monitor> connected/disconnected" notices.
+36. Hover the 10 px strip at the very top edge: it opens. Make sure clicking things in the top 10 px or behind the transparent canvas still reaches other windows (click-through).
+37. Run a full-screen app or game: the capsule hides; return: it reappears.
+
+**I. Plugins and the embedded workspace (real data this time)**
+38. Open each of the 20 plugins from the Plugins tab: it opens inside the capsule (no extra window), Back returns. Try the ones that touch Windows: Converter, Reducer and Print (native file/save dialogs: do they appear on top and work?), Voice Memos (microphone permission and recording), Text Extractor / Lens / Colour Picker / Draw (full-screen overlay appears; the result comes back inside the capsule), Translate scan, QuickShare, Speed Test, Temp Cleaner, YouTube downloader, System Monitor, Weather, Coffee mode.
+39. Global shortcuts for the screen tools still work. Collapse behaviour: open a plugin, click another app: after ~8 s the island collapses; hover to reopen: the page is still there.
+40. Windows with high DPI or a second monitor: any clipping or blur in the workspace.
+
+**J. Settings and notifications**
+41. Switch off one notification category (for example Wi-Fi) and trigger it: no notice, but the tile still updates. Switch it on again.
+42. Quit and restart the app: settings, favourites, pins and the Top gap persist. Exit from the tray menu: no `powershell.exe` helper processes remain in Task Manager (check after 5 s).
+
+### 15.4 What to send back
+For each FAIL: the item number, what you did, what you expected, what happened (screenshot), the exact terminal lines from `npm start`, Windows 11 version (`winver`), whether you were elevated, laptop or desktop, and the device model for audio/Bluetooth issues. For a native problem, the output of the matching manual helper command in 15.2 is the most useful single thing.
+Likely trouble spots, in the order I would look: COM vtable and struct layouts in `native/cs/Audio.cs` and `Wlan.cs`; `Register-ObjectEvent` with WinRT events in `native/bt.ps1`; the Wi-Fi all-user profile permission (item 14); `BluetoothSetServiceState` behaviour per headset; `PowerGetUserConfigured*` availability; a headset auto-reconnecting after disconnect (item 21).
+
+## 16. Importing and reviewing
+```powershell
+# 1. Put liquid-island-phase2.bundle somewhere, then from inside your EXISTING local clone of EyeLandForWindows:
+git bundle verify C:\path\to\liquid-island-phase2.bundle
+git fetch C:\path\to\liquid-island-phase2.bundle "feature/phase-2-embedded-plugins-control-center:feature/phase-2-embedded-plugins-control-center"
+git checkout feature/phase-2-embedded-plugins-control-center
+git log --oneline -5                       # tip should match the hash in the delivery notes; main is not modified
+```
+No existing clone? `git clone C:\path\to\liquid-island-phase2.bundle EyeLandForWindows` then `git checkout feature/phase-2-embedded-plugins-control-center`.
+The bundle contains only this branch (with its full history back to the first commit). It does not touch `main` and nothing is pushed anywhere.
+Base: `main` @ `db695b2`. Commits on the branch: `1c41cc1` (native + system layer), `9d24f8a` (renderer, main, preload), `6543789` (tests, docs, first version of this report) and a final documentation-only commit that adds sections 15-16 (no source files changed; verify with `git diff 6543789..HEAD --stat`).
