@@ -16,6 +16,7 @@ const ssid = (v) => {
 };
 
 // each validator returns the cleaned argument object that is sent on
+const { SETTINGS } = require('./errors');
 const V = {
   'state.all': () => ({}),
   'audio.setVolume': (a) => ({ value: int(a && a.value, 0, 100, 'Volume') }),
@@ -46,5 +47,6 @@ const V = {
   'vpn.openApp': () => ({}),
   'night.openSettings': () => ({}),
   'display.openSettings': () => ({}),
+  'settings.open': (a) => { if (!a || !Object.prototype.hasOwnProperty.call(SETTINGS, a.page)) throw bad('Unknown settings page'); return { page: a.page }; },
 };
 module.exports = { V, OPS: Object.keys(V) };

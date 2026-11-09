@@ -41,7 +41,7 @@ function Get-PairedDevices {
 function Get-BtState {
   $r = Get-LiRadio 'Bluetooth'
   $devs = if ($r.state -eq 'on') { @(Get-PairedDevices) } else { @() }
-  return @{ radio = $r.state; devices = $devs }
+  return @{ radio = $r.state; devices = $devs; radioError = $r.error; radioAccess = $r.access }
 }
 $emitState = {
   $s = Get-BtState

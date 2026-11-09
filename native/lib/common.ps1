@@ -6,15 +6,27 @@ $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
 
 function Import-LiSource([string[]]$Files) {
-  $paths = @(Join-Path $PSScriptRoot '..\cs\LiIO.cs') + ($Files | ForEach-Object { Join-Path $PSScriptRoot "..\cs\$_" })
+  $dir = [System.IO.Path]::Combine($PSScriptRoot, '..', 'cs')
+  $paths = @([System.IO.Path]::Combine($dir, 'LiIO.cs')) + ($Files | ForEach-Object { [System.IO.Path]::Combine($dir, $_) })
   try { Add-Type -Path $paths -ErrorAction Stop }
-  catch { [Console]::Error.WriteLine('Add-Type failed: ' + $_.Exception.Message); exit 2 }
+  catch { [Console]::Error.WriteLine('Add-Type failed: ' + $_.Exception.Message); if ($_.Exception.LoaderExceptions) { $_.Exception.LoaderExceptions | ForEach-Object { [Console]::Error.WriteLine('  ' + $_.Message) } }; exit 2 }
+}
+# PowerShell wraps an exception thrown inside a .NET method call in MethodInvocationException (and a failed Task in AggregateException),
+# so "$_.Exception -is [LiError]" is false for every error thrown from C#. Walk down to the real exception and classify it.
+function Get-LiFault($Ex) {
+  $x = $Ex; $n = 0
+  while ($x -and -not ($x -is [LiError]) -and $x.InnerException -and $n -lt 10) { $x = $x.InnerException; $n++ }
+  $code = 'failed'; $msg = [string]$x.Message
+  if ($x -is [LiError]) { $code = $x.Code }
+  elseif ($x -is [System.Runtime.InteropServices.COMException]) { $code = 'com'; $msg = ('{0} (0x{1:X8})' -f $msg.Trim(), $x.HResult) }
+  elseif ($x -is [System.UnauthorizedAccessException]) { $code = 'access_denied' }
+  return @{ code = $code; message = $msg; detail = ($Ex.GetType().Name + ' > ' + $x.GetType().FullName) }
 }
 function ConvertTo-LiJson($o) { ConvertTo-Json -InputObject $o -Compress -Depth 8 }
 function Send-LiEvent([string]$Name, $Data) { [LiIO]::Event($Name, (ConvertTo-LiJson $Data)) }
-function Send-LiReply($Id, [bool]$Ok, $Data, [string]$Err, [string]$Code) {
+function Send-LiReply($Id, [bool]$Ok, $Data, [string]$Err, [string]$Code, [string]$Detail = '') {
   $r = @{ rid = $Id; ok = $Ok }
-  if ($Ok) { $r.data = $Data } else { $r.error = $Err; if ($Code) { $r.code = $Code } }
+  if ($Ok) { $r.data = $Data } else { $r.error = $Err; if ($Code) { $r.code = $Code }; if ($Detail) { $r.detail = $Detail } }
   [LiIO]::Write((ConvertTo-LiJson $r))
 }
 
@@ -37,9 +49,8 @@ function Start-LiLoop([scriptblock]$OnCommand, [scriptblock]$OnEvent) {
         $data = & $OnCommand $cmd
         Send-LiReply $id $true $data '' ''
       } catch {
-        $code = 'failed'; $msg = $_.Exception.Message
-        if ($_.Exception -is [LiError]) { $code = $_.Exception.Code }
-        Send-LiReply $id $false $null $msg $code                      # never echoes the request (it may hold a Wi-Fi password)
+        $f = Get-LiFault $_.Exception
+        Send-LiReply $id $false $null $f.message $f.code $f.detail    # never echoes the request (it may hold a Wi-Fi password)
       }
     } elseif ($OnEvent) {
       try { & $OnEvent $e } catch { [Console]::Error.WriteLine('event handler: ' + $_.Exception.Message) }

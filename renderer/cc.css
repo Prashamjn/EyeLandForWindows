@@ -70,3 +70,5 @@ button.cc-ib:hover { background: var(--border-hi); } .cc-ib svg { width: 17px; h
 .sig { display: inline-flex; align-items: flex-end; gap: 2px; height: 14px; flex: none; }
 .sig i { width: 3px; border-radius: 1px; background: var(--track); } .sig i.on { background: var(--fg); }
 .sig i:nth-child(1) { height: 4px; } .sig i:nth-child(2) { height: 7px; } .sig i:nth-child(3) { height: 10px; } .sig i:nth-child(4) { height: 14px; }
+
+.cc-errbox { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }

@@ -5,6 +5,7 @@ const { Helper } = require('./helper');
 const { V } = require('./validate');
 const N = require('./notify');
 const display = require('./display');
+const { SETTINGS, actionFor } = require('./errors');
 
 function createSystem({ nativeDir, send, settings, openExternal, openPath }) {
   const mockDir = process.env.LI_NATIVE_MOCK || '';
@@ -15,7 +16,7 @@ function createSystem({ nativeDir, send, settings, openExternal, openPath }) {
     power: new Helper({ name: 'power', file: 'power.ps1', nativeDir, mockDir }),
   };
   const FLAG = { audio: 'monitorAudio', net: 'monitorNetwork', bt: 'monitorBluetooth', power: 'monitorPower' };
-  const cache = { audio: null, mic: null, wifi: null, vpn: null, bt: null, battery: null, powermode: null, bri: undefined, displays: null };
+  const cache = { audio: null, mic: null, wifi: null, vpn: null, bt: null, battery: null, powermode: null, bri: undefined, briError: null, displays: null };
   const batteryFlags = {};
   const dedupe = N.createDeduper();
   const cc = (payload) => send('cc:event', payload);
@@ -52,7 +53,7 @@ function createSystem({ nativeDir, send, settings, openExternal, openPath }) {
   H.power.on('event', (ev, d) => {
     if (ev === 'battery') apply('battery', d, (p, n) => N.battery(p, n, batteryFlags));
     else if (ev === 'powermode') apply('powermode', d, N.powermode);
-    else if (ev === 'brightness') { cache.bri = d.value; cc({ kind: 'state', key: 'bri', data: d.value }); send('system', { kind: 'bri', value: d.value }); }
+    else if (ev === 'brightness') { cache.bri = d.value; cache.briError = d.error || null; cc({ kind: 'state', key: 'bri', data: d.value }); cc({ kind: 'state', key: 'briError', data: cache.briError }); send('system', { kind: 'bri', value: d.value }); }
   });
   for (const [k, h] of Object.entries(H)) {
     h.on('down', () => cc({ kind: 'helper', helper: k, up: false }));
@@ -83,7 +84,7 @@ function createSystem({ nativeDir, send, settings, openExternal, openPath }) {
     if (cache.audio === null) need.push(['audio', H.audio.request('get').then((r) => { cache.audio = r.audio; cache.mic = r.mic; })]);
     if (cache.wifi === null) need.push(['net', H.net.request('get').then((r) => { cache.wifi = r.wifi; cache.vpn = r.vpn; })]);
     if (cache.bt === null) need.push(['bt', H.bt.request('get').then((r) => { cache.bt = r; })]);
-    if (cache.battery === null) need.push(['power', H.power.request('get').then((r) => { cache.battery = r.battery; cache.powermode = r.powermode; cache.bri = r.brightness; })]);
+    if (cache.battery === null) need.push(['power', H.power.request('get').then((r) => { cache.battery = r.battery; cache.powermode = r.powermode; cache.bri = r.brightness; cache.briError = r.brightnessError || null; })]);
     const res = await Promise.allSettled(need.map((x) => x[1]));
     res.forEach((r, i) => { if (r.status === 'rejected') unavailable[need[i][0]] = { code: r.reason.code, message: r.reason.message }; });
     for (const [k, h] of Object.entries(H)) if (!h.supported) unavailable[k] = { code: 'unsupported', message: 'This feature needs Windows.' };
@@ -119,6 +120,7 @@ function createSystem({ nativeDir, send, settings, openExternal, openPath }) {
       }
       case 'night.openSettings': await openExternal('ms-settings:nightlight'); return true;
       case 'display.openSettings': await openExternal('ms-settings:display'); return true;
+      case 'settings.open': await openExternal(SETTINGS[args.page]); return true;
     }
     throw Object.assign(new Error('Unknown operation'), { code: 'invalid' });
   }
@@ -126,7 +128,11 @@ function createSystem({ nativeDir, send, settings, openExternal, openPath }) {
   async function call(op, arg) {
     if (typeof op !== 'string' || !V[op]) return { ok: false, code: 'invalid', error: 'Unknown operation' };
     try { return { ok: true, data: await run(op, V[op](arg)) }; }
-    catch (e) { return { ok: false, code: e.code || 'failed', error: e.message || 'Something went wrong' }; }
+    catch (e) {
+      const code = e.code || 'failed';
+      if (e.detail) console.error(`[cc] ${op} failed: ${code}: ${e.message} [${e.detail}]`);      // diagnostics only: the request arguments (a Wi-Fi password) are never logged
+      return { ok: false, code, error: e.message || 'Something went wrong', detail: e.detail, action: actionFor(code) };
+    }
   }
 
   function shutdown() { Object.values(H).forEach((h) => h.stop()); }

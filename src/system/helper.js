@@ -48,7 +48,7 @@ class Helper extends EventEmitter {
       if (m.ev) { this.emit('event', m.ev, m.data); continue; }
       const q = this.pending.get(m.rid); if (!q) continue;
       this.pending.delete(m.rid); clearTimeout(q.t);
-      if (m.ok) q.res(m.data); else q.rej(Object.assign(new Error(m.error || 'Failed'), { code: m.code || 'failed' }));
+      if (m.ok) q.res(m.data); else q.rej(Object.assign(new Error(m.error || 'Failed'), { code: m.code || 'failed', detail: m.detail }));
     }
   }
   _exit(p, code) {

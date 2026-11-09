@@ -32,7 +32,7 @@ const CC_OPS = new Set([
   'state.all', 'audio.setVolume', 'audio.setMute', 'audio.setOutput', 'mic.setMute', 'bri.set',
   'wifi.scan', 'wifi.setPower', 'wifi.connect', 'wifi.disconnect',
   'bt.setPower', 'bt.scan', 'bt.stopScan', 'bt.connect', 'bt.disconnect', 'bt.pair',
-  'power.setMode', 'vpn.openApp', 'night.openSettings', 'display.openSettings',
+  'power.setMode', 'vpn.openApp', 'night.openSettings', 'display.openSettings', 'settings.open',
 ]);
 contextBridge.exposeInMainWorld('cc', {
   call: (op, arg) => (CC_OPS.has(op) ? ipcRenderer.invoke('cc:call', op, arg) : Promise.resolve({ ok: false, code: 'invalid', error: 'Unknown operation' })),

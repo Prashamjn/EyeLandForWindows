@@ -6,6 +6,7 @@ using System;
 using System.Collections;
 using System.Globalization;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 
@@ -80,4 +81,12 @@ public static class LiJson {
 }
 
 // An error with a machine-readable code (e.g. "denied", "unsupported", "not_found") that the app turns into a helpful message.
-public class LiError : Exception { public string Code; public LiError(string code, string msg) : base(msg) { Code = code; } }
+public class LiError : Exception {
+  public string Code;
+  public LiError(string code, string msg) : base(msg) { Code = code; }
+  // A failed COM call: keeps the HRESULT visible ("... (0x80070005)") instead of a bare exception.
+  public static LiError FromHr(int hr, string what) {
+    string detail; try { detail = Marshal.GetExceptionForHR(hr).Message.Trim(); } catch (Exception) { detail = "COM error"; }
+    return new LiError("com", what + " failed: " + detail + " (0x" + hr.ToString("X8") + ")");
+  }
+}
