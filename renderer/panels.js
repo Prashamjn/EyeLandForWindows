@@ -92,34 +92,66 @@
   taskInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') addTask(); });
   // the island window is not focusable by default, so allow typing only while the box is in use
   taskInput.addEventListener('mousedown', () => { api.setFocusable(true); setTimeout(() => taskInput.focus(), 60); });
-  taskInput.addEventListener('blur', () => { api.setFocusable(false); if (!LI.island.isInside()) LI.island.scheduleClose(); });
+  taskInput.addEventListener('blur', () => { if (!LI.island.pinned) api.setFocusable(false); if (!LI.island.isInside()) LI.island.scheduleClose(); });
 
   /* ================= settings ================= */
+  let displayOptions = [['primary', 'Primary display']];
   const FIELDS = [
+    { sec: 'Appearance' },
     { k: 'theme', l: 'Theme', t: 'select', o: [['black', 'Obsidian'], ['graphite', 'Graphite'], ['midnight', 'Midnight'], ['light', 'Light']] },
     { k: 'accent', l: 'Accent', t: 'select', o: [['blue', 'Blue'], ['white', 'White'], ['green', 'Green']] },
     { k: 'animSpeed', l: 'Motion speed', t: 'range', min: 0.5, max: 2, step: 0.1 },
-    { k: 'position', l: 'Position', t: 'select', o: [['top', 'Top'], ['bottom', 'Bottom']] },
-    { k: 'offsetY', l: 'Edge gap', t: 'range', min: 0, max: 40, step: 1 },
+    { k: 'reduceMotion', l: 'Reduce motion', t: 'checkbox' },
+    { sec: 'Position' },
+    { k: 'position', l: 'Edge', t: 'select', o: [['top', 'Top'], ['bottom', 'Bottom']] },
+    { k: 'offsetY', l: 'Top gap (px)', t: 'range', min: 0, max: 40, step: 1 },
+    { k: 'display', l: 'Display', t: 'select', o: () => displayOptions, dflt: 'primary' },
+    { k: 'hideInFullscreen', l: 'Hide in full screen', t: 'checkbox' },
+    { sec: 'Behaviour' },
     { k: 'hoverDelay', l: 'Open delay (ms)', t: 'range', min: 0, max: 600, step: 20 },
+    { k: 'expandOn', l: 'When opened', t: 'select', o: [['last', 'Resume last page'], ['home', 'Start at Home']], dflt: 'last' },
+    { k: 'blurCollapseSec', l: 'Collapse after (s)', t: 'range', min: 0, max: 60, step: 1, dflt: 8 },
     { k: 'overlayMs', l: 'Activity time (ms)', t: 'range', min: 800, max: 4000, step: 100 },
+    { sec: 'Device notifications' },
+    { k: 'notifyBluetooth', l: 'Bluetooth', t: 'checkbox', dflt: true },
+    { k: 'notifyWifi', l: 'Wi-Fi', t: 'checkbox', dflt: true },
+    { k: 'notifyVpn', l: 'VPN', t: 'checkbox', dflt: true },
+    { k: 'notifyAudio', l: 'Sound output', t: 'checkbox', dflt: true },
+    { k: 'notifyMic', l: 'Microphone', t: 'checkbox', dflt: true },
+    { k: 'notifyPower', l: 'Power mode', t: 'checkbox', dflt: true },
+    { k: 'notifyDisplay', l: 'Displays', t: 'checkbox', dflt: true },
+    { k: 'notifyBattery', l: 'Battery and charger', t: 'checkbox', dflt: true },
+    { k: 'notifyMs', l: 'Show for (ms)', t: 'range', min: 1200, max: 6000, step: 200, dflt: 2800 },
+    { sec: 'Control Centre' },
+    { k: 'ccMic', l: 'Microphone tile', t: 'checkbox', dflt: true },
+    { k: 'ccPower', l: 'Power mode tile', t: 'checkbox', dflt: true },
+    { k: 'ccNight', l: 'Night Light tile', t: 'checkbox', dflt: true },
+    { k: 'ccDisplay', l: 'Display tile', t: 'checkbox', dflt: true },
+    { k: 'ccCharging', l: 'Charging tile', t: 'checkbox', dflt: true },
+    { sec: 'Background monitoring' },
+    { k: 'monitorAudio', l: 'Sound and microphone', t: 'checkbox', dflt: true },
+    { k: 'monitorNetwork', l: 'Wi-Fi and VPN', t: 'checkbox', dflt: true },
+    { k: 'monitorBluetooth', l: 'Bluetooth', t: 'checkbox', dflt: true },
+    { k: 'monitorPower', l: 'Battery, power, brightness', t: 'checkbox', dflt: true },
+    { sec: 'General' },
     { k: 'focusMin', l: 'Focus (min)', t: 'number', min: 1, max: 120 },
     { k: 'breakMin', l: 'Break (min)', t: 'number', min: 1, max: 60 },
     { k: 'tempUnit', l: 'Temperature', t: 'select', o: [['c', '°C'], ['f', '°F']] },
     { k: 'showBattery', l: 'Show battery', t: 'checkbox', dflt: true },
     { k: 'clipboardHistory', l: 'Clipboard history', t: 'checkbox' },
-    { k: 'hideInFullscreen', l: 'Hide in full screen', t: 'checkbox' },
     { k: 'autostart', l: 'Start with Windows', t: 'checkbox' },
   ];
   const fieldEls = {};
   const rangeFill = (el_, f) => el_.style.setProperty('--p', ((el_.value - f.min) / (f.max - f.min)) * 100 + '%');
-  const valueOf = (f) => (LI.S[f.k] !== undefined ? LI.S[f.k] : f.dflt !== undefined ? f.dflt : f.t === 'select' ? f.o[0][0] : undefined);
+  const optsOf = (f) => (typeof f.o === 'function' ? f.o() : f.o);
+  const valueOf = (f) => (LI.S[f.k] !== undefined ? LI.S[f.k] : f.dflt !== undefined ? f.dflt : f.t === 'select' ? optsOf(f)[0][0] : undefined);
 
   function buildSettings() {
     const form = $('#settingsForm'); form.replaceChildren();
     FIELDS.forEach((f) => {
+      if (f.sec) return form.append(el('div', { class: 'sec', text: f.sec }));
       let input;
-      if (f.t === 'select') input = el('select', {}, f.o.map(([v, l]) => el('option', { value: v, text: l })));
+      if (f.t === 'select') input = el('select', {}, optsOf(f).map(([v, l]) => el('option', { value: v, text: l })));
       else { input = el('input', { type: f.t }); if (f.min !== undefined) { input.min = f.min; input.max = f.max; } if (f.step) input.step = f.step; }
       input.id = 'f_' + f.k; fieldEls[f.k] = input;
       input.addEventListener('input', () => {
@@ -127,12 +159,12 @@
         const prev = { ...LI.S };
         LI.S[f.k] = v; api.saveSettings({ [f.k]: v });
         if (f.t === 'range') rangeFill(input, f);
-        LI.applySettings(prev);
+        LI.bus.emit('settings', LI.S);                // the bus re-applies the settings everywhere
         if (f.k === 'focusMin' || f.k === 'breakMin') { if (!T.running && T.remaining === T.total) setTimerMode(T.mode); }
       });
       form.append(el('div', { class: 'field' }, el('label', { for: 'f_' + f.k, text: f.l }), input));
     });
-    const sc = el('button', { class: 'link-btn', text: 'Plugin shortcuts' }); sc.addEventListener('click', () => api.openHub('shortcuts'));
+    const sc = el('button', { class: 'link-btn', text: 'Plugin shortcuts' }); sc.addEventListener('click', () => LI.workspace.openPlugin('shortcuts'));
     const q = el('button', { class: 'quit', text: 'Quit Liquid Island' }); q.addEventListener('click', () => api.quit());
     form.append(el('div', { class: 'foot' }, sc, q));
     syncSettings();
@@ -140,14 +172,22 @@
   // reflect the current settings in the form (also used when another window, e.g. the plugin hub, changes them)
   function syncSettings() {
     FIELDS.forEach((f) => {
-      const input = fieldEls[f.k]; if (!input || document.activeElement === input) return;
+      const input = f.sec ? null : fieldEls[f.k]; if (!input || document.activeElement === input) return;
       const v = valueOf(f);
       if (f.t === 'checkbox') input.checked = !!v; else input.value = v;
       if (f.t === 'range') rangeFill(input, f);
     });
   }
 
-  LI.panels = {
+  // the Display select lists the connected monitors (names come from the main process)
+  async function refreshDisplays() {
+    try { displayOptions = [['primary', 'Primary display'], ...(await api.displays()).map((d) => [String(d.id), d.label + (d.primary ? ' (primary)' : '')])]; } catch { return; }
+    const sel = fieldEls.display; if (!sel) return;
+    sel.replaceChildren(...displayOptions.map(([v, l]) => el('option', { value: v, text: l })));
+    sel.value = (LI.S.display && displayOptions.some((o) => o[0] === String(LI.S.display))) ? String(LI.S.display) : 'primary';
+  }
+
+  LI.panels = { refreshDisplays,
     paintTimer, setTimerMode, indicators, paintClips, paintTasks, buildSettings, syncSettings,
     onClips(list) { LI.state.clips = list; paintClips(); },
     onSettings() { paintClips(); paintTasks(); syncSettings(); },

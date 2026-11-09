@@ -5,7 +5,8 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder --win nsis"
+    "dist": "electron-builder --win nsis",
+    "test:unit": "node --test tools/tests/*.test.js"
   },
   "dependencies": {
     "ffmpeg-static": "^5.2.0",
@@ -24,8 +25,23 @@
       "node_modules/tesseract.js/**",
       "node_modules/tesseract.js-core/**"
     ],
-    "files": ["main.js", "preload.js", "src/**", "shared/**", "renderer/**", "hub/**", "overlay/**", "native/**", "assets/**"],
-    "win": { "target": "nsis", "icon": "assets/icon.ico" },
-    "nsis": { "oneClick": true, "perMachine": false }
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**",
+      "shared/**",
+      "renderer/**",
+      "overlay/**",
+      "native/**",
+      "assets/**"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false
+    }
   }
 }
