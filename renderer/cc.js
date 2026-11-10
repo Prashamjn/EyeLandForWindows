@@ -266,7 +266,7 @@
     if (!v) return [note('Loading…')];
     const out = [];
     if (!v.installed) out.push(row('vpnOff', 'Proton VPN', 'Not installed on this PC'), note('Install the Proton VPN app from protonvpn.com, then come back here to see its status.'));
-    else out.push(row(v.connected ? 'vpn' : 'vpnOff', 'Proton VPN', v.connected ? 'Connected (its network adapter is up)' : v.running ? 'Not connected' : 'Not running'),
+    else out.push(row(v.connected ? 'vpn' : 'vpnOff', 'Proton VPN', v.connected ? 'Connected (tunnel adapter up with an address)' : v.connecting ? 'Connecting…' : v.running ? 'Not connected' : 'Not running'),
       row('rocket', 'Status source', 'Windows network adapter state. Server and location are private to the Proton app.'),
       el('div', { class: 'cc-actions' }, btn(v.running ? 'Open Proton VPN' : 'Start Proton VPN', 'primary', async () => { const r = await call('vpn.openApp'); if (r.ok) LI.toast('Opening Proton VPN'); })));
     out.push(note('Liquid Island shows whether Proton VPN is connected, but cannot connect or disconnect it: Proton publishes no control interface for Windows, and this app will not automate its login or read its data.'));

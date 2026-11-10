@@ -325,6 +325,21 @@ public static class LiVpn {
     NetworkChange.NetworkAvailabilityChanged += delegate { debounce.Change(700, Timeout.Infinite); };
   }
   static bool IsProton(NetworkInterface n) { string t = (n.Name + " " + n.Description).ToLowerInvariant(); return t.Contains("protonvpn") || t.Contains("proton vpn") || t.Contains("proton-vpn"); }
+  // Helper adapters (leak protection, split tunnelling, driver callouts) can stay up while NOT connected: never count them as a tunnel.
+  static bool IsHelperAdapter(NetworkInterface n) { string t = (n.Name + " " + n.Description).ToLowerInvariant(); return t.Contains("kill") || t.Contains("callout") || t.Contains("split") || t.Contains("leak"); }
+  // a usable address: not link-local (169.254.x.x / fe80::), not loopback. A tunnel that is still negotiating has none.
+  static bool HasTunnelAddress(NetworkInterface n) {
+    try {
+      foreach (UnicastIPAddressInformation u in n.GetIPProperties().UnicastAddresses) {
+        System.Net.IPAddress a = u.Address;
+        if (System.Net.IPAddress.IsLoopback(a) || a.IsIPv6LinkLocal) continue;
+        byte[] b = a.GetAddressBytes(); if (b.Length == 4 && b[0] == 169 && b[1] == 254) continue;
+        return true;
+      }
+    } catch (Exception) { }
+    return false;
+  }
+  static string cLoc, cVer, cLnk; static DateTime cAt = DateTime.MinValue;          // the install lookup walks the registry: do it at most once a minute
 
   static string Find(out string version) {
     version = null; string exe = null;
@@ -359,20 +374,25 @@ public static class LiVpn {
     return null;
   }
   public static string StateJson() {
-    string ver; string loc = Find(out ver); string lnk = Shortcut();
+    if ((DateTime.UtcNow - cAt).TotalSeconds > 60) { cLoc = Find(out cVer); cLnk = Shortcut(); cAt = DateTime.UtcNow; }
+    string ver = cVer, loc = cLoc, lnk = cLnk;
     bool installed = loc != null || lnk != null;
     bool running = false;
     foreach (string pn in ProcNames) { try { Process[] ps = Process.GetProcessesByName(pn); running = running || ps.Length > 0; foreach (Process p in ps) p.Dispose(); } catch (Exception) { } }
-    string adapter = null; bool up = false;
+    string adapter = null, evidence = "no Proton VPN network adapter found"; bool verified = false, negotiating = false;
     try {
       foreach (NetworkInterface n in NetworkInterface.GetAllNetworkInterfaces()) {
-        if (!IsProton(n)) continue;
-        adapter = n.Name;
-        if (n.OperationalStatus == OperationalStatus.Up) { up = true; break; }
+        if (!IsProton(n) || IsHelperAdapter(n)) continue;
+        if (adapter == null) adapter = n.Name;
+        bool up = n.OperationalStatus == OperationalStatus.Up;
+        if (!up) { evidence = "adapter \"" + n.Name + "\" is " + n.OperationalStatus.ToString().ToLowerInvariant(); continue; }
+        if (HasTunnelAddress(n)) { adapter = n.Name; verified = true; evidence = "adapter \"" + n.Name + "\" is up and has an address"; break; }
+        negotiating = true; evidence = "adapter \"" + n.Name + "\" is up but has no address yet";
       }
-    } catch (Exception) { }
-    // connected = the VPN's own adapter is up. If the app is not installed, never report connected.
-    return LiJson.Obj("installed", installed, "version", ver, "running", running, "adapter", adapter, "connected", installed && up, "launch", lnk);
+    } catch (Exception e) { evidence = "could not read network adapters: " + e.Message; }
+    // connected = the VPN's own tunnel adapter is up AND holds a usable address. Observation only: Proton VPN has no documented API, and
+    // traffic is not probed (that would mean contacting an outside service). If the app is not installed, never report connected.
+    return LiJson.Obj("installed", installed, "version", ver, "running", running, "adapter", adapter, "connected", installed && verified, "connecting", installed && negotiating && !verified, "evidence", evidence, "launch", lnk);
   }
   public static void Emit(bool force) {
     try { string j = StateJson(); if (!force && j == last) return; last = j; LiIO.Event("vpn", j); } catch (Exception e) { LiIO.Log("vpn emit: " + e.Message); }
