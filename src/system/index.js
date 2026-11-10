@@ -49,6 +49,7 @@ function createSystem({ nativeDir, send, settings, openExternal, openPath }) {
   H.bt.on('event', (ev, d) => {
     if (ev === 'bt') apply('bt', d, N.bluetooth);
     else if (ev === 'bt-scan') cc({ kind: 'scan', key: 'bt', data: d });
+    else if (ev === 'bt-events') console.error(`[cc] bluetooth events: ${d.mode}${d.errors && d.errors.length ? ' (' + d.errors.join(' | ') + ')' : ''}`);       // 'polling' means a WinRT subscription failed: the reason is here
   });
   H.power.on('event', (ev, d) => {
     if (ev === 'battery') apply('battery', d, (p, n) => N.battery(p, n, batteryFlags));

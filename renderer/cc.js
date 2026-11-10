@@ -249,7 +249,7 @@
     out.push(mine, el('div', { class: 'cc-sec' }, el('span', { text: 'Add a device' }), btn(ui.btScanning ? 'Searching…' : 'Search', 'sm', scanBt, ui.btScanning)));
     const near = el('div', { class: 'cc-list' });
     const paired = new Set(b.devices.map((d) => d.id));
-    ui.found.filter((d) => !paired.has(d.id)).forEach((d) => { const busy = ui.busy['bt:' + d.id]; near.append(row('bluetooth', d.name, busy ? busy + '…' : 'Available', btn('Pair', 'sm', () => btAction(d, 'pair'), !!busy))); });
+    ui.found.filter((d) => !paired.has(d.id)).forEach((d) => { const busy = ui.busy['bt:' + d.id]; near.append(row('bluetooth', d.name, busy ? busy + '…' : d.le ? 'Available · low energy' : 'Available', btn('Pair', 'sm', () => btAction(d, 'pair'), !!busy))); });
     if (!near.children.length) near.append(note(ui.btScanning ? 'Looking for devices. Put yours in pairing mode.' : 'Nothing found yet.'));
     out.push(near);
     return out;
