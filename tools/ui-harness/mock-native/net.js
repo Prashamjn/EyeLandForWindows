@@ -14,11 +14,12 @@ serve(async (m) => {
     case 'networks': return { networks: nets() };
     case 'connect': {
       if (m.ssid === 'Cafe Guest' && !m.known && m.password !== 'correct-pass') {
-        setTimeout(() => emit('wifi-progress', { phase: 'failed', ssid: m.ssid }), 200);
-        return true;                                    // Windows accepts the request, then reports the failed attempt asynchronously
+        // Same contract as the real helper since Phase 3: connect BLOCKS until Windows reports the outcome and fails with a typed error.
+        throw fail('connect_failed', 'Windows could not connect to "' + m.ssid + '": The network security key is incorrect. The password may be wrong.');
       }
       wifi = { ...wifi, state: 'connecting' }; push();
-      setTimeout(() => { wifi = { ...wifi, state: 'connected', ssid: m.ssid }; push(); }, 400);
+      await new Promise((r) => setTimeout(r, 400));                 // blocking like the real helper: the reply comes after the connection is up
+      wifi = { ...wifi, state: 'connected', ssid: m.ssid }; push();
       return true;
     }
     case 'disconnect': wifi = { ...wifi, state: 'disconnected', ssid: null }; push(); return true;

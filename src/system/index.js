@@ -142,7 +142,9 @@ function createSystem({ nativeDir, send, settings, openExternal, openPath }) {
         return r && r.limited && r.reason === 'location_denied' ? { ...r, action: actionFor('location_denied') } : r;     // scanning refused: saved networks only, with the fix offered
       }
       case 'wifi.setPower': await H.net.request('setRadio', args, 25000); await settle('net', () => (cache.wifi && cache.wifi.radio === (args.on ? 'on' : 'off') ? null : `Windows reports the Wi-Fi radio as ${cache.wifi && cache.wifi.radio}.`)); return true;
-      case 'wifi.connect': cc({ kind: 'progress', key: 'wifi', phase: 'connecting', ssid: args.ssid }); await H.net.request('connect', args, 40000);          // the helper itself waits for Windows' completion + verifies the adapter (<= 28 s)
+      case 'wifi.connect': cc({ kind: 'progress', key: 'wifi', phase: 'connecting', ssid: args.ssid });
+        try { await H.net.request('connect', args, 40000); }
+        catch (e) { notice([{ cat: 'wifi', id: 'wifi', icon: 'wifiOff', title: 'Could not connect', sub: args.ssid || '', tone: 'warn' }]); throw e; }        // the helper's own failure event is suppressed while it waits, so say it here          // the helper itself waits for Windows' completion + verifies the adapter (<= 28 s)
         await settle('net', () => (cache.wifi && cache.wifi.state === 'connected' && (args.profile || !cache.wifi.ssid || cache.wifi.ssid === args.ssid) ? null : `Windows reports Wi-Fi as "${cache.wifi && cache.wifi.state}"${cache.wifi && cache.wifi.ssid ? ' on "' + cache.wifi.ssid + '"' : ''}.`)); return true;
       case 'wifi.disconnect': await H.net.request('disconnect', {}, 15000); await settle('net', () => (cache.wifi && cache.wifi.state === 'connected' ? 'Windows still reports a Wi-Fi connection.' : null)); return true;
       case 'bt.setPower': await H.bt.request('setRadio', args, 25000); await settle('bt', () => (cache.bt && cache.bt.radio === (args.on ? 'on' : 'off') ? null : `Windows reports the Bluetooth radio as ${cache.bt && cache.bt.radio}.`)); return true;

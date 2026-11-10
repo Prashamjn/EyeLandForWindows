@@ -63,7 +63,7 @@ module.exports = async (c) => {
   await c.shot('52_cc_wifi_password');
   await clear();
   await ev("(() => { const i = document.querySelector('.pw-form input'); i.value = 'wrong-pass-1'; i.dispatchEvent(new Event('input')); document.querySelector('.pw-form .btn.primary').click(); })(); 0"); await wait(1200);
-  ok('wrong password -> failure message shown, not "connected"', await ev("document.querySelector('.cc-note.bad') && document.querySelector('.cc-note.bad').textContent.includes('Could not connect') && LI.cc.state.wifi.ssid === 'Home Wi-Fi'"));
+  ok('wrong password -> failure message shown, not "connected"', await ev("document.querySelector('.cc-note.bad') && document.querySelector('.cc-note.bad').textContent.toLowerCase().includes('could not connect') && LI.cc.state.wifi.ssid === 'Home Wi-Fi'"));
   ok('notification: "Could not connect"', (await notices()).some((n) => n.startsWith('Could not connect')), JSON.stringify(await notices()));
   await ev("[...document.querySelectorAll('.cc-pane .li-row')].find(r => r.textContent.includes('Cafe Guest')).click(); 0"); await wait(300);
   await clear();

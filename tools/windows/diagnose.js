@@ -12,7 +12,11 @@
 //   node tools/windows/diagnose.js --bt-scan        also run a 10 s Bluetooth discovery
 //   node tools/windows/diagnose.js --power-mode     also switch the Windows power mode, verify, restore
 //   node tools/windows/diagnose.js --brightness     also change brightness by 5 %, verify, restore
-//   node tools/windows/diagnose.js --all            every optional test above
+//   node tools/windows/diagnose.js --all            every optional test above (does not include --watch)
+//   node tools/windows/diagnose.js --watch 90       AUTOMATIC NOTIFICATIONS: listens for 90 s while YOU change things in Windows (toggle Wi-Fi / Bluetooth
+//                                                   in Quick Settings, connect/disconnect a device, switch sound output, change volume, plug/unplug the charger)
+//                                                   and reports which native events arrived. Manual-control tests (above) and this are separate on purpose.
+//   node tools/windows/diagnose.js --ci             for a hardware-less Windows CI runner: expected "no adapter / no device" results are warnings
 //
 // Output: a console summary and diagnostics/cc-diagnose-<timestamp>.json (contains your SSIDs / device names: review before sharing).
 // For development without Windows: --mock tools/ui-harness/mock-native runs the SAME harness against the Node mocks. That only tests this
@@ -30,11 +34,15 @@ const mockAt = argv.indexOf('--mock');
 const mockDir = mockAt >= 0 ? path.resolve(argv[mockAt + 1] || '') : '';
 const nativeDir = path.join(__dirname, '..', '..', 'native');
 const isWin = process.platform === 'win32';
+const CI = argv.includes('--ci');            // hardware-less CI runner: "no adapter / no device" is expected there, crashes and untyped failures are not
 const t0 = Date.now();
+const watchAt = argv.indexOf('--watch');
+const WATCH = watchAt >= 0 ? Math.max(15, Math.min(600, Number(argv[watchAt + 1]) || 60)) : 0;
 
 const report = { tool: 'liquid-island-cc-diagnose', startedAt: new Date().toISOString(), mock: !!mockDir, env: {}, checks: [], helperStderr: [], events: [] };
 const COLORS = { PASS: '\x1b[32m', FAIL: '\x1b[31m', WARN: '\x1b[33m', INFO: '\x1b[36m', SKIP: '\x1b[90m' };
 function check(area, name, status, detail) {
+  if (CI && status === 'FAIL' && /no_adapter|no_device|no_radio|not_found|"available":false/.test(JSON.stringify(detail === undefined ? '' : detail))) status = 'WARN';
   report.checks.push({ area, name, status, detail: detail === undefined ? null : detail });
   const d = detail === undefined ? '' : ' - ' + (typeof detail === 'string' ? detail : JSON.stringify(detail));
   console.log(`${COLORS[status] || ''}${status.padEnd(4)}\x1b[0m [${area}] ${name}${d.length > 300 ? d.slice(0, 300) + '…' : d}`);
@@ -49,7 +57,11 @@ console.error = (...a) => { const s = a.join(' '); report.helperStderr.push(s); 
 /* ---------- one real helper ---------- */
 function open(name, file) {
   const h = new Helper({ name, file, nativeDir, mockDir });
-  h.on('event', (ev, data) => report.events.push({ at: Date.now() - t0, helper: name, ev, data: JSON.stringify(data || null).slice(0, 200) }));
+  h.on('event', (ev, data) => {
+    const e = { at: Date.now() - t0, helper: name, ev, data: JSON.stringify(data || null).slice(0, 2000) };
+    report.events.push(e);
+    if (WATCH && e.at > 0) console.log(`\x1b[90m  [+${(e.at / 1000).toFixed(1)}s] ${name}/${ev} ${e.data.slice(0, 140)}\x1b[0m`);
+  });
   return h;
 }
 async function boot(h, ms = 45000) {
@@ -95,6 +107,7 @@ function wlanProbe() {
   if (!isWin) return;
   const r = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'probe-wlan.ps1')], { encoding: 'utf8', timeout: 60000 });
   let p = null; try { p = JSON.parse(String(r.stdout).trim().split(/\r?\n/).pop()); } catch { /* reported below */ }
+  if (p && p.open) return check('wifi', 'raw Native Wifi API probe', 'INFO', `WlanOpenHandle returned ${p.open}: the WLAN service is not running (normal on a PC without Wi-Fi)`);
   if (!p) return check('wifi', 'raw Native Wifi API probe', 'FAIL', { stdout: String(r.stdout).slice(0, 300), stderr: String(r.stderr).slice(0, 400) });
   report.env.wlanProbe = p;
   check('wifi', 'WlanScan return code', p.scan === 0 ? 'PASS' : p.scan === -1 ? 'SKIP' : 'FAIL', `${p.scan} (5 = ERROR_ACCESS_DENIED)`);
@@ -108,7 +121,7 @@ async function audio() {
   const g = await ask(h, 'state.all', 'get', {}, 20000);
   if (!g.ok) { check('audio', 'get state', 'FAIL', why(g)); return h; }
   const { audio: a, mic: m } = g.data;
-  check('audio', 'get state', a && a.available !== false ? 'PASS' : 'FAIL', { volume: a && a.volume, muted: a && a.muted, default: a && a.outName, outputs: ((a && a.outputs) || []).map((o) => o.name) });
+  check('audio', 'get state', a && a.available !== false ? 'PASS' : CI ? 'WARN' : 'FAIL', { volume: a && a.volume, muted: a && a.muted, default: a && a.outName, outputs: ((a && a.outputs) || []).map((o) => o.name) });
   const rejected = ((a && a.outputs) || []).filter((o) => { try { V['audio.setOutput']({ id: o.id }); return false; } catch { return true; } });
   check('audio', 'validator accepts every real endpoint id', rejected.length ? 'FAIL' : 'PASS', rejected.map((o) => o.id));
   check('audio', 'microphone', m && m.present ? 'INFO' : 'WARN', m);
@@ -173,7 +186,10 @@ async function bt() {
   const h = open('bt', 'bt.ps1'); if (!(await boot(h))) return h;
   const g = await ask(h, 'state.all', 'get', {}, 40000);
   if (!g.ok) { check('bt', 'get state', 'FAIL', why(g)); return h; }
-  check('bt', 'get state', 'INFO', { radio: g.data.radio, devices: g.data.devices.map((d) => ({ name: d.name, connected: d.connected, le: d.le })) });
+  const evr = await until(async () => report.events.find((e) => e.helper === 'bt' && e.ev === 'bt-events'), 6000, 200);
+  if (evr) { const d = JSON.parse(evr.data); check('bt', 'WinRT event subscriptions (radio, per-device, paired watcher) - no polling fallback', d.mode === 'events' ? 'PASS' : 'FAIL', d.mode === 'events' ? 'all subscribed' : { mode: d.mode, errors: d.errors }); }
+  else check('bt', 'WinRT event subscription report', 'WARN', 'the helper did not report its event mode');
+  check('bt', 'get state', 'INFO', { radio: g.data.radio, events: g.data.events, pairedError: g.data.pairedError, devices: g.data.devices.map((d) => ({ name: d.name, connected: d.connected, le: d.le })) });
   const badIds = g.data.devices.filter((d) => { try { V['bt.connect']({ id: d.id }); return false; } catch { return true; } });
   check('bt', 'validator accepts every real paired-device id', badIds.length ? 'FAIL' : 'PASS', badIds.map((d) => d.id));
   if (has('--bt-toggle') && (g.data.radio === 'on' || g.data.radio === 'off')) {
@@ -230,8 +246,21 @@ async function power() {
   wlanProbe();
   const hs = [];
   for (const fn of [audio, net, bt, power]) { try { hs.push(await fn()); } catch (e) { check(fn.name, 'harness error', 'FAIL', e.stack || e.message); } }
+  if (WATCH) await watchEvents(hs);
   finish(hs);
 })();
+
+async function watchEvents(hs) {
+  console.log(`\n\x1b[1mWatching native events for ${WATCH} s.\x1b[0m Now change things in WINDOWS itself (not in Liquid Island):\n  Wi-Fi on/off or connect to another network (Quick Settings), Bluetooth on/off, connect/disconnect a Bluetooth device,\n  switch the sound output, change the volume, plug or unplug the charger, change brightness or the power mode.\n`);
+  const from = Date.now() - t0;
+  await sleep(WATCH * 1000);
+  const seen = (helper, ...evs) => report.events.filter((e) => e.helper === helper && e.at > from && (!evs.length || evs.includes(e.ev))).length;
+  const row = (area, label, n) => check(area, `${label}: native event received while you changed it`, n ? 'PASS' : 'WARN', n ? `${n} event(s)` : 'none seen. Either you did not do it in this window, or the event path is broken: repeat and watch the log above');
+  row('wifi', 'Wi-Fi (radio / connection)', seen('net', 'wifi'));
+  row('bt', 'Bluetooth (radio / device connection / pairing)', seen('bt', 'bt'));
+  row('audio', 'sound (output / volume / mute)', seen('audio', 'audio'));
+  row('power', 'power (charger / battery / mode / brightness)', seen('power'));
+}
 
 function finish(hs) {
   for (const h of hs) if (h) h.stop();
