@@ -23,7 +23,7 @@ Tools I did get working in the sandbox, which Batch 1 did not have: Mono `mcs`, 
 |---|---|---|---|---|---|---|
 | 1 | Error transport | F2, F3, F9 | yes | yes | **yes, real PowerShell run, bug reproduced then fixed** | no |
 | 2 | Wi-Fi | F1, F4, F5, F6 | yes | yes | Node logic only | no |
-| 3 | Sound output | F7, F8 | yes | yes | Node logic only | no |
+| 3 | Sound output | F7, F8 | yes | yes | Node logic only | **native switch yes (diagnose, section 13)**; in-app path not yet |
 | 4 | Authoritative refresh | F14 | yes | n/a | yes (lying-helper tests) | no |
 | 5 | Bluetooth | F10, F11 | yes | yes | no (WinRT only) | no |
 | 6 | Proton VPN | F13 | yes | yes | no | no |
@@ -170,3 +170,29 @@ Open **Windows PowerShell or Terminal as a normal user (not administrator)**.
 * The Electron UI scenarios use mock helpers. They validate renderer/backend logic, not Windows.
 * Night Light, microphone logic and display detection are unchanged apart from the shared error handling.
 * Not started (by your instruction): hover/collapse, motion system, Audio Studio, media, lyrics, charging sound, settings additions, README/completion report.
+
+
+## 13. First Windows run (your PC, Windows 11 build 26300, PowerShell 5.1.26100)
+
+These are **measured** results from the diagnostic you ran, and they changed the picture.
+
+**What it proved**
+
+| Result | Meaning |
+|---|---|
+| Audio helper starts | The audio C# compiles on real Windows. |
+| `--audio-switch`: switched to *Speaker (Realtek)* in 170 ms, Windows re-read confirmed it, an `audio` event was pushed, original (FxSound) restored | **Native output switching works** with the Batch 2 code. The Phase 2 failure is therefore not in the `IPolicyConfig` call itself. It is still unexplained: candidates are the Phase 2 error handling, the app path, or FxSound (a virtual device that may re-assert itself as default). The new verification layer reports `unverified` plus what Windows says if that happens in the app. |
+| Power helper starts; a battery-percentage change was pushed as an event (79 to 78) | The power event path works on Windows. Brightness (100) and power mode (balanced) read correctly. |
+| Location consent `Allow`; `WlanScan` 0; network list 0 (23 networks); current-connection query 0 | **Finding F1 is not the cause of your Wi-Fi problem.** It remains a real latent bug for PCs where that setting is off, and the handling stays. |
+| Windows PowerShell 5.1, FullLanguage, build 26300 | The assumed runtime is right. |
+
+**What it exposed: two defects in this batch, now fixed**
+
+1. **The `net` helper (Wi-Fi + VPN) did not start.** `Wlan.cs` kept an unused field `last` after I rewrote `Emit`; Windows' compiler promotes that warning to an error (`Warning as Error: The field 'LiWlan.last' is assigned but its value is never used`) and the helper crash-looped. **My mistake:** my Mono compile printed `1 warning(s)` and I had filtered warnings out of the output, so I reported "compiles". Fixes: field removed; `tools/tests/csharp-compile.test.js` now compiles every helper at C# 5 and **fails on any warning** (verified: it fails when the bug is reintroduced), with a justified allowlist for two Mono-only false positives in Phase 2's `Power.cs` that Windows compiles fine. The Windows CI job would have caught this and has still never run.
+2. **WinRT event subscription by `EventInfo.AddEventHandler` is rejected by Windows.** Exact message: `Adding or removing event handlers dynamically is not supported on WinRT events.` So the Bluetooth helper fell back to polling, as designed (it did not crash; the failure was reported precisely). Fix: `LiWinRt` now uses the route the C# compiler itself emits, `WindowsRuntimeMarshal.AddEventHandler<T>` over the token-returning accessors, then a direct accessor call, and reports why *each* strategy failed. **Not yet verified on Windows.** `tools/windows/probe-winrt-events.ps1` prints the real accessor signatures, tries the subscription, tests a compile-against-`.winmd` plan B, and (with `-Seconds 20`) shows whether events actually arrive when you toggle Bluetooth.
+
+**Still unknown after this run**
+
+* Wi-Fi: nothing could be measured (helper was down). Re-run after pulling the fix.
+* Bluetooth radio was **off** with no paired devices listed, so device/connect/discovery paths are untested.
+* `--watch`: the only event seen in the window was power; no Wi-Fi/Bluetooth/audio change was made during it (or the helpers were not producing events). It proves nothing about those paths yet.

@@ -53,7 +53,7 @@ public static class LiWlan {
   const int E_ACCESS_DENIED = 5;
   const uint PROFILE_USER = 2;                      // WLAN_PROFILE_USER: a per-user profile does not need the "add all-user profile" permission
   const uint SRC_ACM = 0x8, SRC_MSM = 0x10;         // WLAN_NOTIFICATION_SOURCE_ACM / _MSM
-  static IntPtr handle; static NotifCb cb; static Timer debounce; static string last = "";
+  static IntPtr handle; static NotifCb cb; static Timer debounce;
   static volatile string pendingPhase; static string pendingSsid;
   static volatile bool inConnect;                    // while Connect() waits, its own reply carries the result: no duplicate "failed" event
   static readonly object connLock = new object();
