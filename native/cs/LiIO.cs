@@ -6,6 +6,7 @@ using System;
 using System.Collections;
 using System.Globalization;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 
@@ -80,4 +81,25 @@ public static class LiJson {
 }
 
 // An error with a machine-readable code (e.g. "denied", "unsupported", "not_found") that the app turns into a helpful message.
-public class LiError : Exception { public string Code; public LiError(string code, string msg) : base(msg) { Code = code; } }
+public class LiError : Exception {
+  public string Code;
+  public LiError(string code, string msg) : base(msg) { Code = code; }
+  // A failed COM call: keeps the HRESULT visible ("... (0x80070005)") instead of a bare exception.
+  public static LiError FromHr(int hr, string what) {
+    string detail; try { detail = Marshal.GetExceptionForHR(hr).Message.Trim(); } catch (Exception) { detail = "COM error"; }
+    return new LiError("com", what + " failed: " + detail + " (0x" + hr.ToString("X8") + ")");
+  }
+}
+
+// Thread-safe bridge from native callback threads (WLAN, WinRT) to the PowerShell main loop. PowerShell cannot subscribe to WinRT events,
+// but it can subscribe to this ordinary .NET event with Register-ObjectEvent and then Wait-Event (no polling, no CPU while idle).
+public class LiSignalArgs : EventArgs {
+  public string Tag, Id, Name, Extra;
+  public LiSignalArgs(string tag) { Tag = tag; }
+}
+public class LiHub {
+  public static readonly LiHub Instance = new LiHub();
+  public event EventHandler<LiSignalArgs> Signal;
+  public void Raise(LiSignalArgs a) { EventHandler<LiSignalArgs> h = Signal; if (h != null) { try { h(this, a); } catch (Exception) { } } }
+  public void Raise(string tag) { Raise(new LiSignalArgs(tag)); }
+}

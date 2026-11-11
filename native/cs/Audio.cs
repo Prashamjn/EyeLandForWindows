@@ -190,21 +190,36 @@ public static class LiAudio {
     } catch (Exception e) { LiIO.Log("audio emit: " + e.Message); }
   }
 
+  static void Chk(int hr, string what) { if (hr < 0) throw LiError.FromHr(hr, what); }
   public static void SetVolume(int v) {
-    lock (L) { if (regRender == null) throw new InvalidOperationException("No output device"); Guid g = Guid.Empty;
-      Marshal.ThrowExceptionForHR(regRender.SetMasterVolumeLevelScalar(Math.Max(0, Math.Min(100, v)) / 100f, ref g));
-      if (v > 0) regRender.SetMute(false, ref g); }
+    lock (L) { if (regRender == null) throw new LiError("no_device", "Windows reports no sound output device.");
+      Guid g = Guid.Empty;
+      Chk(regRender.SetMasterVolumeLevelScalar(Math.Max(0, Math.Min(100, v)) / 100f, ref g), "Setting the volume");
+      if (v > 0) { int hr = regRender.SetMute(false, ref g); if (hr < 0) LiIO.Log("unmute after volume change failed: 0x" + hr.ToString("X8")); } }
   }
-  public static void SetMute(bool m) { lock (L) { if (regRender == null) throw new InvalidOperationException("No output device"); Guid g = Guid.Empty; Marshal.ThrowExceptionForHR(regRender.SetMute(m, ref g)); } }
-  public static void SetMicMute(bool m) { lock (L) { if (regCapture == null) throw new InvalidOperationException("No microphone"); Guid g = Guid.Empty; Marshal.ThrowExceptionForHR(regCapture.SetMute(m, ref g)); } }
-  public static void SetDefaultOutput(string id) {
-    // only ids that are currently active render endpoints are accepted
-    IMMDevice d; if (en.GetDevice(id, out d) != 0 || d == null) throw new InvalidOperationException("That device is not available");
-    int st; d.GetState(out st); if (st != StateActive) throw new InvalidOperationException("That device is not available");
-    IPolicyConfig pc = (IPolicyConfig)(new PolicyConfigClientCom());
-    Marshal.ThrowExceptionForHR(pc.SetDefaultEndpoint(id, 0));   // console
-    Marshal.ThrowExceptionForHR(pc.SetDefaultEndpoint(id, 1));   // multimedia
-    Marshal.ThrowExceptionForHR(pc.SetDefaultEndpoint(id, 2));   // communications
-    devicesDirty = true; Changed(true);
+  public static void SetMute(bool m) { lock (L) { if (regRender == null) throw new LiError("no_device", "Windows reports no sound output device."); Guid g = Guid.Empty; Chk(regRender.SetMute(m, ref g), "Changing mute"); } }
+  public static void SetMicMute(bool m) { lock (L) { if (regCapture == null) throw new LiError("no_device", "Windows reports no microphone."); Guid g = Guid.Empty; Chk(regCapture.SetMute(m, ref g), "Changing microphone mute (some drivers do not support it)"); } }
+  static string RoleName(int r) { return r == 0 ? "console" : r == 1 ? "multimedia" : "communications"; }
+  // Makes the device the default for all three roles, then waits until Windows ITSELF reports it as the default; returns the real state.
+  public static string SetDefaultOutput(string id) {
+    IMMDevice d = null; int hr = en.GetDevice(id, out d);                           // only ids that are currently active render endpoints are accepted
+    if (hr != 0 || d == null) throw new LiError("not_found", "That sound device is not available. It may have been unplugged.");
+    int st; d.GetState(out st); if (st != StateActive) throw new LiError("not_found", "That sound device is not active right now.");
+    List<string> roleErrors = new List<string>(); IPolicyConfig pc = null;
+    try {
+      try { pc = (IPolicyConfig)(new PolicyConfigClientCom()); }
+      catch (COMException e) { throw LiError.FromHr(e.ErrorCode, "Creating Windows' audio policy object"); }
+      catch (InvalidCastException e) { throw new LiError("com", "Windows did not provide the audio policy interface (IPolicyConfig): " + e.Message); }
+      for (int role = 0; role < 3; role++) { int h = pc.SetDefaultEndpoint(id, role); if (h != 0) roleErrors.Add(RoleName(role) + " 0x" + h.ToString("X8")); }
+    } finally { if (pc != null) { try { Marshal.ReleaseComObject(pc); } catch (Exception) { } } try { Marshal.ReleaseComObject(d); } catch (Exception) { } }
+    string now = null; DateTime end = DateTime.UtcNow.AddMilliseconds(2500);
+    while (DateTime.UtcNow < end) { lock (L) { now = IdOf(Default(Render)); } if (now == id) break; Thread.Sleep(80); }
+    if (roleErrors.Count > 0) LiIO.Log("SetDefaultEndpoint role errors: " + string.Join("; ", roleErrors.ToArray()));
+    if (now != id) {
+      if (roleErrors.Count > 0) throw new LiError("com", "Windows refused to change the default output (" + string.Join("; ", roleErrors.ToArray()) + ").");
+      throw new LiError("unverified", "Windows accepted the request but the default output is still the previous device.");
+    }
+    devicesDirty = true; Rebind(); Emit(true);
+    return StateJson();
   }
 }

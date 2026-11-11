@@ -6,3 +6,6 @@ npm-debug.log*
 *.log
 .DS_Store
 Thumbs.db
+
+# Windows diagnostic reports (contain SSIDs / device names)
+diagnostics/

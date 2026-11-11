@@ -5,8 +5,8 @@
 //  - features Windows cannot control show their real status and a clearly labelled "Open Windows Settings" shortcut instead
 (() => {
   const { $, el, icon, volIcon, debounce } = LI;
-  const st = { audio: null, mic: null, wifi: null, vpn: null, bt: null, battery: null, powermode: null, bri: undefined, displays: null, unavailable: {} };
-  const ui = { pane: null, nets: null, scanning: false, picked: null, pwd: '', busy: {}, err: {}, found: [], btScanning: false, loaded: false };
+  const st = { audio: null, mic: null, wifi: null, vpn: null, bt: null, battery: null, powermode: null, bri: undefined, briError: null, displays: null, unavailable: {} };
+  const ui = { limited: null, pane: null, nets: null, scanning: false, picked: null, pwd: '', busy: {}, err: {}, act: {}, found: [], btScanning: false, loaded: false };
   let root = null, over = null, body = null, dragging = false;
   const MODES = [['efficiency', 'Best power efficiency', 'leaf'], ['balanced', 'Balanced', 'balance'], ['performance', 'Best performance', 'rocket']];
   const HEADSET = /head(phone|set)|buds|airpods|earbud|earphone|pods/i;
@@ -19,13 +19,23 @@
     return r;
   };
   const unavailable = (k) => st.unavailable[k];
+  const LOCATION = { op: 'settings.open', page: 'location', label: 'Open location settings' };
+  const HELPER_KEY = { audio: 'audio', net: 'net', bt: 'bt', power: 'power' };
+  // an error from Windows is shown as received; when a code has a fix (a Settings page) a button for it is shown with the message
+  const fail = (key, r) => { ui.err[key] = r.error || 'That did not work'; ui.act[key] = r.action || null; };
+  const errNote = (key) => {
+    const box = el('div', { class: 'cc-errbox' }, el('p', { class: 'cc-note bad', text: ui.err[key] }));
+    const a = ui.act[key]; if (a) box.append(el('button', { class: 'btn sm', text: a.label, onclick: () => call(a.op, { page: a.page }, { quiet: true }) }));
+    return box;
+  };
 
   /* ================= state ================= */
   LI.bus.on('cc', (m) => {
     if (m.kind === 'state') { st[m.key] = m.data; if (m.key === 'wifi' && ui.busy.wifi && m.data.state !== 'connecting') { ui.busy.wifi = null; } }
-    else if (m.kind === 'progress' && m.key === 'wifi') { ui.busy.wifi = m.phase === 'connecting' ? m.ssid : null; if (m.phase === 'failed') ui.err.wifi = 'Could not connect to ' + (m.ssid || 'the network') + '. Check the password and try again.'; }
+    else if (m.kind === 'progress' && m.key === 'wifi') { ui.busy.wifi = m.phase === 'connecting' ? m.ssid : null; if (m.phase === 'failed') { ui.err.wifi = 'Windows could not connect to ' + (m.ssid || 'the network') + '.'; ui.act.wifi = null; } }
     else if (m.kind === 'scan' && m.key === 'bt') { ui.found = m.data.devices || []; ui.btScanning = !m.data.done; }
-    else if (m.kind === 'helper' && m.up === false && m.failed) st.unavailable[{ audio: 'audio', net: 'net', bt: 'bt', power: 'power' }[m.helper]] = { message: 'This helper stopped working.' };
+    else if (m.kind === 'helper' && m.up === false && m.failed) st.unavailable[HELPER_KEY[m.helper]] = { message: 'This helper stopped working.' };
+    else if (m.kind === 'helper' && m.up === true && st.unavailable[HELPER_KEY[m.helper]]) { delete st.unavailable[HELPER_KEY[m.helper]]; load(); }       // recovered: stop showing the old failure
     if (LI.workspace.route().type === 'cc') paint();
   });
   LI.bus.on('settings', () => { if (LI.workspace.route().type === 'cc' && !ui.pane) paintOverview(); });
@@ -75,13 +85,13 @@
     const S = LI.S, un = unavailable;
     const w = st.wifi, b = st.bt, v = st.vpn, a = st.audio, m = st.mic, bat = st.battery, pm = st.powermode, d = st.displays;
     // Wi-Fi
-    const wOff = w && w.radio === 'off', wNone = !w || w.radio === 'unsupported' || w.state === 'none' || un('net');
+    const wOff = w && (w.radio === 'off' || w.radio === 'disabled'), wErr = w && w.radio === 'error', wNone = !w || w.radio === 'unsupported' || (w.state === 'none' && !wErr) || wErr || un('net');
     setTile('wifi', { title: 'Wi-Fi', ic: wOff || wNone ? 'wifiOff' : 'wifi', dim: wNone, on: w && w.state === 'connected', sw: w && w.radio === 'on',
-      sub: un('net') ? 'Unavailable' : !w ? 'Loading…' : w.state === 'none' ? 'No adapter' : wOff ? 'Off' : w.state === 'connecting' ? 'Connecting…' : w.state === 'connected' ? w.ssid : 'Not connected' });
+      sub: un('net') ? 'Unavailable' : !w ? 'Loading…' : wErr ? 'Windows error' : w.state === 'none' ? 'No adapter' : wOff ? 'Off' : w.state === 'connecting' ? 'Connecting…' : w.state === 'connected' ? (w.ssid || 'Connected') : 'Not connected' });
     // Bluetooth
     const connected = b && b.devices ? b.devices.filter((x) => x.connected) : [];
-    setTile('bt', { title: 'Bluetooth', dim: !b || b.radio === 'unsupported' || un('bt'), on: b && b.radio === 'on' && connected.length > 0, sw: b && b.radio === 'on',
-      sub: un('bt') ? 'Unavailable' : !b ? 'Loading…' : b.radio === 'unsupported' ? 'Not available' : b.radio === 'off' ? 'Off' : connected.length ? (connected.length === 1 ? connected[0].name : connected.length + ' connected') : 'On' });
+    setTile('bt', { title: 'Bluetooth', dim: !b || b.radio === 'unsupported' || b.radio === 'error' || un('bt'), on: b && b.radio === 'on' && connected.length > 0, sw: b && b.radio === 'on',
+      sub: un('bt') ? 'Unavailable' : !b ? 'Loading…' : b.radio === 'error' ? 'Windows error' : b.radio === 'unsupported' ? 'Not available' : b.radio === 'off' || b.radio === 'disabled' ? 'Off' : connected.length ? (connected.length === 1 ? connected[0].name : connected.length + ' connected') : 'On' });
     // VPN (Proton VPN: observed, not controlled)
     setTile('vpn', { title: 'VPN', ic: v && v.connected ? 'vpn' : 'vpnOff', on: v && v.connected,
       sub: un('net') ? 'Unavailable' : !v ? 'Loading…' : !v.installed ? 'Proton VPN not installed' : v.connected ? 'Proton VPN · Connected' : 'Proton VPN · Off' });
@@ -107,7 +117,9 @@
       $('#ccOutN', over).textContent = a.outName || 'No output device'; $('#ccOutI', over).innerHTML = icon(outIcon(a.outName, (a.outputs.find((o) => o.default) || {}).form));
     } else { $('#ccOutN', over).textContent = un('audio') ? 'Unavailable' : 'Loading…'; $('.cc-ib[data-act="mute"]', over).innerHTML = icon('vol1'); $('#ccOutI', over).innerHTML = icon('speaker'); }
     const hasBri = st.bri !== null && st.bri !== undefined;
-    $('#ccBriRow', over).hidden = !hasBri;                                         // no built-in panel brightness control: say nothing, claim nothing
+    const briBad = !hasBri && !!st.briError;                                        // Windows failed to read it: say so. No controller at all (desktop / external monitor): stay hidden
+    $('#ccBriRow', over).hidden = !hasBri && !briBad;
+    $('#ccBri', over).disabled = briBad; $('#ccBriN', over).textContent = briBad ? 'Error' : $('#ccBriN', over).textContent; $('#ccBriRow', over).title = briBad ? st.briError : '';
     if (hasBri && !dragging) { const r = $('#ccBri', over); r.value = st.bri; r.style.setProperty('--p', st.bri + '%'); $('#ccBriN', over).textContent = st.bri; }
   }
 
@@ -126,8 +138,10 @@
   }
   async function toggleRadio(kind, on) {
     ui.busy[kind + 'radio'] = true; paint();
-    await call(kind + '.setPower', { on });                         // the new state arrives as an event from Windows, not from us
-    ui.busy[kind + 'radio'] = false; paint();
+    const r = await call(kind + '.setPower', { on }, { quiet: true });   // success means the backend re-read Windows and saw the new state
+    ui.busy[kind + 'radio'] = false;
+    if (!r.ok) { if (r.action && ui.pane !== kind) go(kind); fail(kind, r); LI.toast(r.error || 'That did not work', true); }
+    paint(true);
   }
 
   /* ================= detail panes ================= */
@@ -135,7 +149,7 @@
     mic: ['Microphone', 'mic'], power: ['Power mode', 'gauge'], night: ['Night Light', 'moon'], display: ['Displays', 'display'] };
   function go(pane) {
     if (ui.pane === 'bt' && pane !== 'bt' && ui.btScanning) call('bt.stopScan', {}, { quiet: true });
-    ui.pane = pane || null; ui.picked = null; ui.pwd = ''; ui.err = {};
+    ui.pane = pane || null; ui.picked = null; ui.pwd = ''; ui.err = {}; ui.act = {};
     const [t, ic] = pane ? TITLES[pane] : ['Control Centre', 'control'];
     LI.workspace.ccPane(pane || null, t, ic);
     paint(true);
@@ -156,14 +170,20 @@
   function wifiPane() {
     const w = st.wifi, p = el('div', { class: 'pane' });
     if (unavailable('net')) return [note(unavailable('net').message || 'Wi-Fi is not available here.')];
-    if (!w || w.state === 'none') return [note(w ? 'No Wi-Fi adapter was found on this PC.' : 'Loading…')];
-    p.append(row('wifi', 'Wi-Fi', w.radio === 'off' ? 'Off' : w.state === 'connected' ? 'Connected to ' + w.ssid : w.state === 'connecting' ? 'Connecting…' : 'Not connected',
+    if (!w) return [note('Loading…')];
+    if (w.state === 'none' && w.radio === 'error') return [note('Windows could not report the Wi-Fi radio: ' + (w.radioError || 'unknown error'), 'bad')];
+    if (w.state === 'none') return [note('No Wi-Fi adapter was found on this PC.')];
+    p.append(row('wifi', 'Wi-Fi', w.radio === 'off' ? 'Off' : w.state === 'connected' ? 'Connected' + (w.ssid ? ' to ' + w.ssid : '') : w.state === 'connecting' ? 'Connecting…' : 'Not connected',
       ...(w.state === 'connected' ? [btn('Disconnect', 'sm', async () => { await call('wifi.disconnect'); })] : []),
       sw(w.radio === 'on', () => toggleRadio('wifi', w.radio !== 'on'), ui.busy.wifiradio || w.radio === 'unsupported')));
-    if (w.radio === 'off') return [p, note('Wi-Fi is turned off.')];
+    if (ui.err.wifi && w.radio !== 'on') p.append(errNote('wifi'));
+    if (w.radio === 'error') return [p, note('Windows could not report the Wi-Fi radio: ' + (w.radioError || 'unknown error'), 'bad')];
+    if (w.radio === 'off' || w.radio === 'disabled') return [p, note(w.hardwareOff ? 'Wi-Fi is switched off by a hardware switch or key on this PC.' : 'Wi-Fi is turned off.')];
+    if (w.state === 'connected' && w.ssidError === 'location_denied' && !w.ssid) p.append(el('div', { class: 'cc-errbox' }, note('Windows hides the network name from desktop apps until location access is allowed.'), btn(LOCATION.label, 'sm', () => call(LOCATION.op, { page: LOCATION.page }, { quiet: true }))));
     const head = el('div', { class: 'cc-sec' }, el('span', { text: 'Available networks' }), btn(ui.scanning ? 'Scanning…' : 'Scan', 'sm', () => scanWifi(), ui.scanning));
     const list = el('div', { class: 'cc-list' });
-    if (ui.err.wifi) list.append(note(ui.err.wifi, 'bad'));
+    if (ui.limited) list.append(el('div', { class: 'cc-errbox' }, note('Windows is blocking Wi-Fi scanning for desktop apps, so only your saved networks are listed.'), ...(ui.limited.action ? [btn(ui.limited.action.label, 'sm', () => call(ui.limited.action.op, { page: ui.limited.action.page }, { quiet: true }))] : [])));
+    if (ui.err.wifi) list.append(errNote('wifi'));
     (ui.nets || []).forEach((n) => {
       const picked = ui.picked === n.ssid, connecting = ui.busy.wifi === n.ssid || (n.connected && w.state === 'connecting');
       const status = n.connected ? 'Connected' : connecting ? 'Connecting…' : n.known ? 'Saved' : n.security === 'enterprise' ? 'Needs a work account' : n.secure ? 'Secured' : 'Open';
@@ -171,7 +191,8 @@
       r.classList.toggle('on', n.connected); r.tabIndex = 0;
       const act = () => {
         if (n.connected || connecting) return;
-        if (n.security === 'enterprise' && !n.known) { ui.picked = null; ui.err.wifi = 'This network needs a work or school account. Connect to it from Windows settings.'; return paint(true); }
+        if (n.security === 'enterprise' && !n.known) { ui.picked = null; ui.err.wifi = 'This network needs a work or school account. Connect to it from Windows settings.'; ui.act.wifi = null; return paint(true); }
+        if (n.security === 'wep' && !n.known) { ui.picked = null; ui.err.wifi = 'This network uses WEP, which Liquid Island does not set up. Connect to it from Windows settings.'; ui.act.wifi = null; return paint(true); }
         if (n.secure && !n.known) { ui.picked = picked ? null : n.ssid; ui.pwd = ''; ui.err.wifi = ''; return paint(true); }
         connectWifi(n);
       };
@@ -193,8 +214,8 @@
   }
   async function connectWifi(n, password) {
     ui.err.wifi = ''; ui.busy.wifi = n.ssid; ui.picked = null; ui.pwd = ''; paint(true);   // user action: repaint even though the password field has focus
-    const r = await call('wifi.connect', { ssid: n.ssid, security: n.security, known: !!n.known, password: password || '' }, { quiet: true });
-    if (!r.ok) { ui.busy.wifi = null; ui.err.wifi = r.error; }
+    const r = await call('wifi.connect', { ssid: n.ssid, security: n.security, known: !!n.known, profile: n.known && n.profile ? n.profile : '', password: password || '' }, { quiet: true });
+    if (!r.ok) { ui.busy.wifi = null; fail('wifi', r); }
     paint(true); setTimeout(() => scanWifi(true), 1500);
   }
   async function scanWifi(silent) {
@@ -202,19 +223,21 @@
     ui.scanning = true; if (!silent) paint();
     const r = await call('wifi.scan', {}, { quiet: true });
     ui.scanning = false;
-    if (r.ok) ui.nets = r.data.networks || []; else { ui.nets = ui.nets || []; ui.err.wifi = r.error; }
+    if (r.ok) { ui.nets = r.data.networks || []; ui.limited = r.data.limited ? { action: r.data.action || LOCATION } : null; } else { ui.nets = ui.nets || []; fail('wifi', r); }
     if (ui.pane === 'wifi') paint();
   }
 
-  async function scanBt() { ui.found = []; ui.btScanning = true; paint(); const r = await call('bt.scan', {}, { quiet: true }); if (!r.ok) { ui.btScanning = false; ui.err.bt = r.error; paint(); } }
+  async function scanBt() { ui.found = []; ui.btScanning = true; paint(); const r = await call('bt.scan', {}, { quiet: true }); if (!r.ok) { ui.btScanning = false; fail('bt', r); paint(); } }
   function btPane() {
     const b = st.bt;
     if (unavailable('bt')) return [note(unavailable('bt').message || 'Bluetooth is not available here.')];
     if (!b) return [note('Loading…')];
-    if (b.radio === 'unsupported') return [note('This PC has no Bluetooth radio.')];
+    if (b.radio === 'unsupported') return [note('Windows lists no Bluetooth radio on this PC.')];
+    if (b.radio === 'error') return [note('Windows could not report the Bluetooth radio: ' + (b.radioError || 'unknown error'), 'bad')];
     const out = [row('bluetooth', 'Bluetooth', b.radio === 'on' ? 'On' : 'Off', sw(b.radio === 'on', () => toggleRadio('bt', b.radio !== 'on'), ui.busy.btradio))];
+    if (ui.err.bt && b.radio !== 'on') out.push(errNote('bt'));
     if (b.radio !== 'on') return [...out, note('Bluetooth is turned off.')];
-    if (ui.err.bt) out.push(note(ui.err.bt, 'bad'));
+    if (ui.err.bt) out.push(errNote('bt'));
     out.push(el('div', { class: 'cc-sec' }, el('span', { text: 'My devices' })));
     const mine = el('div', { class: 'cc-list' });
     if (!b.devices.length) mine.append(note('No paired devices. Use Add a device below.'));
@@ -226,7 +249,7 @@
     out.push(mine, el('div', { class: 'cc-sec' }, el('span', { text: 'Add a device' }), btn(ui.btScanning ? 'Searching…' : 'Search', 'sm', scanBt, ui.btScanning)));
     const near = el('div', { class: 'cc-list' });
     const paired = new Set(b.devices.map((d) => d.id));
-    ui.found.filter((d) => !paired.has(d.id)).forEach((d) => { const busy = ui.busy['bt:' + d.id]; near.append(row('bluetooth', d.name, busy ? busy + '…' : 'Available', btn('Pair', 'sm', () => btAction(d, 'pair'), !!busy))); });
+    ui.found.filter((d) => !paired.has(d.id)).forEach((d) => { const busy = ui.busy['bt:' + d.id]; near.append(row('bluetooth', d.name, busy ? busy + '…' : d.le ? 'Available · low energy' : 'Available', btn('Pair', 'sm', () => btAction(d, 'pair'), !!busy))); });
     if (!near.children.length) near.append(note(ui.btScanning ? 'Looking for devices. Put yours in pairing mode.' : 'Nothing found yet.'));
     out.push(near);
     return out;
@@ -234,7 +257,7 @@
   async function btAction(d, what) {
     ui.err.bt = ''; ui.busy['bt:' + d.id] = { connect: 'Connecting', disconnect: 'Disconnecting', pair: 'Pairing' }[what]; paint();
     const r = await call('bt.' + what, { id: d.id }, { quiet: true });          // success is only known once Windows confirms it (state event)
-    ui.busy['bt:' + d.id] = null; if (!r.ok) ui.err.bt = r.error; paint();
+    ui.busy['bt:' + d.id] = null; if (!r.ok) fail('bt', r); paint();
   }
 
   function vpnPane() {
@@ -243,7 +266,7 @@
     if (!v) return [note('Loading…')];
     const out = [];
     if (!v.installed) out.push(row('vpnOff', 'Proton VPN', 'Not installed on this PC'), note('Install the Proton VPN app from protonvpn.com, then come back here to see its status.'));
-    else out.push(row(v.connected ? 'vpn' : 'vpnOff', 'Proton VPN', v.connected ? 'Connected (its network adapter is up)' : v.running ? 'Not connected' : 'Not running'),
+    else out.push(row(v.connected ? 'vpn' : 'vpnOff', 'Proton VPN', v.connected ? 'Connected (tunnel adapter up with an address)' : v.connecting ? 'Connecting…' : v.running ? 'Not connected' : 'Not running'),
       row('rocket', 'Status source', 'Windows network adapter state. Server and location are private to the Proton app.'),
       el('div', { class: 'cc-actions' }, btn(v.running ? 'Open Proton VPN' : 'Start Proton VPN', 'primary', async () => { const r = await call('vpn.openApp'); if (r.ok) LI.toast('Opening Proton VPN'); })));
     out.push(note('Liquid Island shows whether Proton VPN is connected, but cannot connect or disconnect it: Proton publishes no control interface for Windows, and this app will not automate its login or read its data.'));
