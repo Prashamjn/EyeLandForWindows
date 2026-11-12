@@ -16,7 +16,7 @@ module.exports = async (c) => {
   let nextPick = [];
   ipcMain.removeHandler('ey:pick'); ipcMain.handle('ey:pick', () => nextPick);       // TEST FIXTURE
   await wait(800);
-  await ev(`api.saveSettings({ audioDir: ${JSON.stringify(outDir)}, audioFormat: 'wav', audioRemember: true }); Object.assign(LI.S, { audioDir: ${JSON.stringify(outDir)}, audioFormat: 'wav', audioRemember: true }); LI.bus.emit('settings', LI.S); 0`);
+  await ev(`api.saveSettings({ audioDir: ${JSON.stringify(outDir)}, audioFormat: 'wav', audioRemember: true, blurCollapseSec: 0 }); Object.assign(LI.S, { blurCollapseSec: 0, audioDir: ${JSON.stringify(outDir)}, audioFormat: 'wav', audioRemember: true }); LI.bus.emit('settings', LI.S); 0`);
   const click = (sel) => ev(`document.querySelector(${JSON.stringify(sel)}).click(); 0`);
   const until = async (code, ms = 15000) => { const t = Date.now(); while (Date.now() - t < ms) { if (await ev(code)) return true; await wait(100); } return false; };
   const setVal = (sel, v) => ev(`(() => { const e = document.querySelector(${JSON.stringify(sel)}); e.focus(); e.value = ${JSON.stringify(String(v))}; e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true })); e.blur(); })(); 0`);
@@ -27,6 +27,7 @@ module.exports = async (c) => {
 
   /* ============ Audio Trimmer ============ */
   await ev("LI.workspace.openPlugin('audioTrim'); 0"); await wait(900);
+  c.send('cursor', { x: 380, y: 200 }); await wait(200);          // the user's cursor is on the island while they work
   ok('Audio Trimmer opens inside the island with its title and a drop zone', await ev("document.getElementById('wkTitle').textContent === 'Audio Trimmer' && !!document.querySelector('#pluginHost .au-drop')"));
   nextPick = [A]; await click('.au-drop');
   ok('Browse loads the file: name, duration and format are shown', await until("!!document.querySelector('.au-tl') && /tone-a\\.wav/.test(document.querySelector('.au-file').textContent)") && /0:12\.0/.test(await ev("document.querySelector('.au-file').textContent")), await ev("document.querySelector('.au-file') && document.querySelector('.au-file').textContent"));
@@ -119,6 +120,7 @@ module.exports = async (c) => {
 
   /* ============ Audio Merger ============ */
   await ev("LI.workspace.openPlugin('audioMerge'); 0"); await wait(900);
+  c.send('cursor', { x: 380, y: 200 }); await wait(200);
   nextPick = [A, B, C3]; await click('.au-drop'); await until("document.querySelectorAll('.au-track').length === 3", 20000);
   ok('three tracks added: three cards, two transition rows, three timeline blocks', await ev("document.querySelectorAll('.au-track').length === 3 && document.querySelectorAll('.au-trans').length === 2 && document.querySelectorAll('.au-blk').length === 3"));
   ok('total estimated duration with no transitions = 12 + 8 + 6 = 26 s', await ev("document.querySelector('.au-mtl').previousSibling.lastChild.textContent === 'Total 0:26.0'"), await ev("document.querySelector('.au-mtl').parentNode.textContent"));
