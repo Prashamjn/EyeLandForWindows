@@ -63,7 +63,7 @@
 
   let seen = false;
   LI.media = {
-    appName, position, lyricLine,
+    appName, position, lyricLine, timerActive: () => !!timer,
     onMedia(x) {
       x = x || {};
       const k = keyOf(x), changed = k !== trackKey;

@@ -8,6 +8,7 @@
   const NOTES = { connect: [[659.25, 0, 0.16], [987.77, 0.11, 0.34]], disconnect: [[783.99, 0, 0.12], [523.25, 0.09, 0.26]] };   // [Hz, start s, length s]
   LI.chime = {
     count: 0, lastError: '',
+    reset() { ctx = null; last = 0; },                      // drops the cached audio context (used by tests; also lets playback recover after a device change)
     play(kind, volume) {
       try {
         const now = performance.now(); if (now - last < 1200) return false; last = now;          // belt and braces against double events
