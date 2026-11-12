@@ -41,7 +41,8 @@
     };
   }
   function indicators() {
-    LI.island.indicators({ coffee: LI.state.coffee, timerText: started() ? fmt(T.remaining) : '', timerRunning: T.running });
+    const md = LI.state.media || {};
+    LI.island.indicators({ coffee: LI.state.coffee, timerText: started() ? fmt(T.remaining) : '', timerRunning: T.running, media: !!md.title, playing: !!md.playing });
   }
   function paintTimer() {
     const t = fmt(T.remaining), s = started();
@@ -92,7 +93,7 @@
   taskInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') addTask(); });
   // the island window is not focusable by default, so allow typing only while the box is in use
   taskInput.addEventListener('mousedown', () => { api.setFocusable(true); setTimeout(() => taskInput.focus(), 60); });
-  taskInput.addEventListener('blur', () => { if (!LI.island.pinned) api.setFocusable(false); if (!LI.island.isInside()) LI.island.scheduleClose(); });
+  taskInput.addEventListener('blur', () => { if (!LI.island.workFocus) api.setFocusable(false); if (!LI.island.isInside()) LI.island.scheduleClose(); });
 
   /* ================= settings ================= */
   let displayOptions = [['primary', 'Primary display']];
@@ -107,8 +108,29 @@
     { k: 'offsetY', l: 'Top gap (px)', t: 'range', min: 0, max: 40, step: 1 },
     { k: 'display', l: 'Display', t: 'select', o: () => displayOptions, dflt: 'primary' },
     { k: 'hideInFullscreen', l: 'Hide in full screen', t: 'checkbox' },
+    { sec: 'Hover behaviour' },
+    { k: 'hoverExpand', l: 'Expand on hover', t: 'checkbox', dflt: true },
+    { k: 'hoverDelay', l: 'Open delay (ms)', t: 'range', min: 0, max: 600, step: 20, dflt: 120 },
+    { k: 'autoCollapse', l: 'Collapse when the cursor leaves', t: 'checkbox', dflt: true },
+    { k: 'collapseDelay', l: 'Collapse delay (ms)', t: 'range', min: 100, max: 2000, step: 50, dflt: 350 },
+    { info: 'pin', text: () => 'Pin: use the lock button (workspace header or Home) to keep the island open. It is never on by default, is not remembered after a restart, and is released by the Collapse button, Esc on Home, or pressing the lock again.' },
+    { sec: 'Motion' },
+    { k: 'motionMode', l: 'Animations', t: 'select', o: [['system', 'Follow Windows'], ['always', 'Always animate']], dflt: 'system' },
+    { info: 'motion', text: () => { const m = LI.motion.status(); return (m.reduced ? 'Motion is reduced now. ' : 'Motion is on now. ') + m.why + '.'; } },
+    { sec: 'Media' },
+    { k: 'mediaVisualizer', l: 'Visualizer in the capsule', t: 'checkbox', dflt: true },
+    { k: 'mediaArtwork', l: 'Album artwork', t: 'checkbox', dflt: true },
+    { k: 'lyricsEnabled', l: 'Synced lyrics (sends track name to LRCLIB)', t: 'checkbox', dflt: false },
+    { sec: 'Charging' },
+    { k: 'chargeSound', l: 'Sound when the charger connects', t: 'checkbox', dflt: true },
+    { k: 'chargeVolume', l: 'Charging sound volume', t: 'range', min: 0, max: 100, step: 5, dflt: 40 },
+    { k: 'chargeDisconnectSound', l: 'Sound when it disconnects', t: 'checkbox', dflt: false },
+    { sec: 'Audio Studio' },
+    { k: 'audioFormat', l: 'Default format', t: 'select', o: [['mp3', 'MP3'], ['m4a', 'M4A (AAC)'], ['ogg', 'OGG Vorbis'], ['opus', 'Opus'], ['flac', 'FLAC'], ['wav', 'WAV']], dflt: 'mp3' },
+    { k: 'audioBitrate', l: 'Default quality', t: 'select', o: [[128, '128 kbps'], [192, '192 kbps'], [256, '256 kbps'], [320, '320 kbps']], dflt: 256, num: true },
+    { k: 'audioDir', l: 'Default folder', t: 'folder' },
+    { k: 'audioRemember', l: 'Remember last used settings', t: 'checkbox', dflt: true },
     { sec: 'Behaviour' },
-    { k: 'hoverDelay', l: 'Open delay (ms)', t: 'range', min: 0, max: 600, step: 20 },
     { k: 'expandOn', l: 'When opened', t: 'select', o: [['last', 'Resume last page'], ['home', 'Start at Home']], dflt: 'last' },
     { k: 'blurCollapseSec', l: 'Collapse after (s)', t: 'range', min: 0, max: 60, step: 1, dflt: 8 },
     { k: 'overlayMs', l: 'Activity time (ms)', t: 'range', min: 800, max: 4000, step: 100 },
@@ -141,7 +163,7 @@
     { k: 'clipboardHistory', l: 'Clipboard history', t: 'checkbox' },
     { k: 'autostart', l: 'Start with Windows', t: 'checkbox' },
   ];
-  const fieldEls = {};
+  const fieldEls = {}, infoEls = [];
   const rangeFill = (el_, f) => el_.style.setProperty('--p', ((el_.value - f.min) / (f.max - f.min)) * 100 + '%');
   const optsOf = (f) => (typeof f.o === 'function' ? f.o() : f.o);
   const valueOf = (f) => (LI.S[f.k] !== undefined ? LI.S[f.k] : f.dflt !== undefined ? f.dflt : f.t === 'select' ? optsOf(f)[0][0] : undefined);
@@ -150,12 +172,20 @@
     const form = $('#settingsForm'); form.replaceChildren();
     FIELDS.forEach((f) => {
       if (f.sec) return form.append(el('div', { class: 'sec', text: f.sec }));
+      if (f.info) { const n = el('div', { class: 'field note', 'data-info': f.info, text: f.text() }); infoEls.push([n, f]); return form.append(n); }
+      if (f.t === 'folder') {
+        const inp = el('input', { type: 'text', readonly: true, placeholder: 'Music \\ Liquid Island' }); inp.id = 'f_' + f.k; fieldEls[f.k] = inp;
+        const choose = el('button', { class: 'link-btn', text: 'Choose' }), reset = el('button', { class: 'link-btn', text: 'Reset' });
+        choose.addEventListener('click', async () => { const d = await window.eyeland.invoke('ey:audio:folder'); if (d) { LI.S[f.k] = d; api.saveSettings({ [f.k]: d }); LI.bus.emit('settings', LI.S); } });
+        reset.addEventListener('click', () => { LI.S[f.k] = ''; api.saveSettings({ [f.k]: '' }); LI.bus.emit('settings', LI.S); });
+        return form.append(el('div', { class: 'field' }, el('label', { for: 'f_' + f.k, text: f.l }), el('div', { class: 'row-ctl' }, inp, choose, reset)));
+      }
       let input;
       if (f.t === 'select') input = el('select', {}, optsOf(f).map(([v, l]) => el('option', { value: v, text: l })));
       else { input = el('input', { type: f.t }); if (f.min !== undefined) { input.min = f.min; input.max = f.max; } if (f.step) input.step = f.step; }
       input.id = 'f_' + f.k; fieldEls[f.k] = input;
       input.addEventListener('input', () => {
-        const v = f.t === 'checkbox' ? input.checked : (f.t === 'range' || f.t === 'number') ? +input.value : input.value;
+        const v = f.t === 'checkbox' ? input.checked : (f.t === 'range' || f.t === 'number' || f.num) ? +input.value : input.value;
         const prev = { ...LI.S };
         LI.S[f.k] = v; api.saveSettings({ [f.k]: v });
         if (f.t === 'range') rangeFill(input, f);
@@ -164,6 +194,7 @@
       });
       form.append(el('div', { class: 'field' }, el('label', { for: 'f_' + f.k, text: f.l }), input));
     });
+    LI.bus.on('motion', () => syncSettings());
     const sc = el('button', { class: 'link-btn', text: 'Plugin shortcuts' }); sc.addEventListener('click', () => LI.workspace.openPlugin('shortcuts'));
     const q = el('button', { class: 'quit', text: 'Quit Liquid Island' }); q.addEventListener('click', () => api.quit());
     form.append(el('div', { class: 'foot' }, sc, q));
@@ -171,8 +202,9 @@
   }
   // reflect the current settings in the form (also used when another window, e.g. the plugin hub, changes them)
   function syncSettings() {
+    infoEls.forEach(([n, f]) => { n.textContent = f.text(); });
     FIELDS.forEach((f) => {
-      const input = f.sec ? null : fieldEls[f.k]; if (!input || document.activeElement === input) return;
+      const input = f.sec || f.info ? null : fieldEls[f.k]; if (!input || document.activeElement === input) return;
       const v = valueOf(f);
       if (f.t === 'checkbox') input.checked = !!v; else input.value = v;
       if (f.t === 'range') rangeFill(input, f);

@@ -1,26 +1,54 @@
 'use strict';
 // Island state machine: compact <-> mini <-> full, and (when full) mode "dash" (dashboard) or "work" (a plugin page or the
-// Control Centre). All the morphing is CSS (see island.css), driven by data-state / data-mode here.
+// Control Centre). All the morphing is CSS (see island.css), driven by data-state / data-mode / data-dir set here.
 //
-// "Pinned" = full + work mode. While pinned the island does not close when the cursor leaves (you are using a plugin), the
-// window becomes focusable so the keyboard works and native dialogs attach to it, and it only collapses on Back/Esc/Collapse
-// or after the window has been unfocused for `blurCollapseSec`. Background activity never takes keyboard focus.
+// Two things that used to be fused are now separate (Phase 3):
+//   workFocus  full + work mode: the window is focusable so the keyboard works and native dialogs attach. It says NOTHING about
+//              collapsing: the island collapses from every screen when the cursor leaves.
+//   locked     the user's deliberate Pin: keeps the island expanded. In-memory only, never the default. Released by the Collapse
+//              button, by Esc on the dashboard, or by pressing Pin again.
+// Whether to collapse is decided by IslandLogic.decideCollapse (shared/island-logic.js, unit-tested): the cursor, locked, holds
+// (LI.hold: native dialogs, drags, exports, long Control Centre calls), a focused text input in use, and very recent typing.
 (() => {
   const { $ } = LI;
+  const IL = IslandLogic;
   const island = $('#island');
   const mIco = $('#mIco'), mFill = $('#mFill'), mTitle = $('#mTitle'), mSub = $('#mSub'), mVal = $('#mVal');
-  const cIco = $('#cIco'), cTimer = $('#cTimer');
-  let state = 'compact', mode = 'dash', inside = false, interactive = false, pinned = false, hoverT = 0, leaveT = 0, miniT = 0, blurT = 0;
+  const cIco = $('#cIco'), cTimer = $('#cTimer'), cViz = $('#cViz');
+  let state = 'compact', mode = 'dash', inside = false, interactive = false, workFocus = false, locked = false;
+  let hoverT = 0, leaveT = 0, miniT = 0, blurT = 0, lastKeyAt = 0, lastInputAt = 0;
+  const RANK = { compact: 0, mini: 1, full: 2 };
+  const now = () => performance.now();
+
+  /* ---------- settings (read live, so changes apply immediately) ---------- */
+  const hoverExpand = () => LI.S.hoverExpand !== false;
+  const autoCollapse = () => LI.S.autoCollapse !== false;
+  const collapseDelay = () => IL.clampDelay(LI.S.collapseDelay, 350, 100, 2000);
+  const openDelay = () => IL.clampDelay(LI.S.hoverDelay, 120, 0, 600);
 
   const setInteractive = (on) => { if (on !== interactive) { interactive = on; api.setInteractive(on); } };
-  function syncPin() {
+  function syncFocus() {
     const want = state === 'full' && mode === 'work';
-    if (want === pinned) return;
-    pinned = want; api.setFocusable(want);
+    if (want === workFocus) return;
+    workFocus = want; api.setFocusable(want);
     if (!want) clearTimeout(blurT);
   }
-  const setState = (s) => { state = s; island.dataset.state = s; syncPin(); };
-  function setMode(m) { mode = m; island.dataset.mode = m; syncPin(); }
+  function setState(s) {
+    if (s !== state) island.dataset.dir = RANK[s] > RANK[state] ? 'expand' : 'collapse';
+    state = s; island.dataset.state = s; syncFocus();
+  }
+  function setMode(m) {
+    if (m !== mode && state === 'full') island.dataset.dir = 'nav';          // dashboard <-> workspace: same state, different size
+    mode = m; island.dataset.mode = m; syncFocus();
+  }
+
+  /* ---------- the deliberate lock (Pin) ---------- */
+  function setLocked(v) {
+    v = !!v; if (v === locked) return;
+    locked = v; island.dataset.locked = v ? '1' : '';
+    LI.bus.emit('lock', locked);
+    if (!locked && state === 'full' && !inside) scheduleClose();
+  }
 
   /* ---------- mini ---------- */
   function paintMini(a) {
@@ -42,7 +70,6 @@
   }
 
   /* ---------- full ---------- */
-  // show(): just expand (no routing). open(): expand and optionally route to a dashboard view, plugin or Control Centre.
   function show() {
     clearTimeout(miniT); clearTimeout(leaveT); clearTimeout(blurT);
     LI.dashboard.onOpen();
@@ -57,37 +84,69 @@
     else if (state !== 'full' && W.route().type !== 'dash' && LI.S.expandOn === 'home') W.toDash();   // default is to resume where you were
     show();
   }
-  const typing = () => !!document.activeElement && document.activeElement.id === 'taskInput';
-  function scheduleClose() {
-    clearTimeout(leaveT);
-    leaveT = setTimeout(() => { if (!inside && !typing() && !pinned) close(); }, 350);
-  }
-  function close() { clearTimeout(leaveT); clearTimeout(blurT); setState('compact'); setInteractive(false); }
 
-  // clicking another app while a plugin is open: collapse after a grace period (the page stays mounted, so nothing is lost)
+  /* ---------- collapse ---------- */
+  const editable = () => {
+    const a = document.activeElement; if (!a || a === document.body) return false;
+    if (a.isContentEditable || a.tagName === 'TEXTAREA') return true;
+    return a.tagName === 'INPUT' && !/^(range|checkbox|radio|button|submit|reset|color|file|image)$/i.test(a.type);
+  };
+  const situation = () => ({ autoCollapse: autoCollapse(), state, inside, locked, holds: LI.hold.active(), editableFocused: editable(), sinceInputMs: now() - lastInputAt, sinceKeyMs: now() - lastKeyAt });
+  function tryClose() {
+    const d = IL.decideCollapse(situation());
+    if (d.collapse) return close();
+    if (['hold', 'typing', 'keyboard'].includes(d.reason)) leaveT = setTimeout(tryClose, 300);   // something temporary is in the way: look again shortly
+  }
+  // the cursor left: wait the grace period, then decide (called by hover logic, the task input blur handler and when a hold ends)
+  function scheduleClose(ms) {
+    clearTimeout(leaveT);
+    if (!autoCollapse() || state !== 'full') return;
+    leaveT = setTimeout(tryClose, ms == null ? collapseDelay() : ms);
+  }
+  function close() { clearTimeout(leaveT); clearTimeout(blurT); clearTimeout(hoverT); locked = false; island.dataset.locked = ''; LI.bus.emit('lock', false); setState('compact'); setInteractive(false); }
+  LI.bus.on('hold', () => { if (state === 'full' && !inside && !LI.hold.active()) scheduleClose(); });   // a hold ended while the cursor is away
+
+  // another app took focus while a workspace is open (never while holds are active: a native dialog also blurs the window)
   window.addEventListener('blur', () => {
     const s = +LI.S.blurCollapseSec;
-    if (!pinned || !(s > 0)) return;
+    if (state !== 'full' || locked || !(s > 0) || !workFocus) return;
     clearTimeout(blurT);
-    blurT = setTimeout(() => { if (pinned && !document.hasFocus() && !inside) close(); }, s * 1000);
+    const check = () => {
+      if (state !== 'full' || locked || document.hasFocus() || inside) return;
+      if (LI.hold.active()) { blurT = setTimeout(check, 1000); return; }
+      close();
+    };
+    blurT = setTimeout(check, s * 1000);
   });
   window.addEventListener('focus', () => clearTimeout(blurT));
+
   window.addEventListener('keydown', (e) => {
+    lastKeyAt = now(); if (editable()) lastInputAt = lastKeyAt;
     if (e.key !== 'Escape' || state !== 'full') return;
     if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) && e.target.value && e.target.dataset.escClears) return;
     LI.workspace.escape();
-  });
+  }, true);
+  document.addEventListener('input', () => { lastInputAt = now(); }, true);
+  document.addEventListener('focusin', () => { if (editable()) lastInputAt = now(); }, true);
+  // a file being dragged over the island (from Explorer) must not collapse it mid-drop; the hold has a short maximum age
+  let dragDepth = 0;
+  window.addEventListener('dragenter', () => { dragDepth++; LI.hold.begin('drag', 20000); });
+  window.addEventListener('dragleave', () => { dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) LI.hold.end('drag'); });
+  window.addEventListener('drop', () => { dragDepth = 0; LI.hold.end('drag'); });
+  window.addEventListener('dragend', () => { dragDepth = 0; LI.hold.end('drag'); });
+  // with hover expansion switched off, a click on the capsule opens it
+  island.addEventListener('click', () => { if (!hoverExpand() && state !== 'full') open(); });
 
   /* ---------- compact indicators (only while something is running) ---------- */
-  function indicators({ coffee, timerText, timerRunning }) {
+  function indicators({ coffee, timerText, timerRunning, playing, media }) {
     cIco.hidden = !coffee; cIco.innerHTML = coffee ? LI.icon('coffee') : '';
     cTimer.hidden = !timerText; cTimer.textContent = timerText || ''; cTimer.classList.toggle('running', !!timerRunning);
-    island.toggleAttribute('data-busy', !!(coffee || timerText));
+    const viz = !!media && LI.S.mediaVisualizer !== false;     // present only while a session exists; animated only while it is actually playing
+    cViz.hidden = !viz; cViz.dataset.play = viz && playing ? '1' : '0';
+    island.toggleAttribute('data-busy', !!(coffee || timerText || viz));
   }
 
-  /* ---------- position / edge ----------
-     The Electron window itself is placed `offsetY` px from the screen edge (main.js place()), so the island sits flush at the
-     edge of its transparent canvas; here we only choose which edge and whether the outer silhouette is a full pill. */
+  /* ---------- position / edge ---------- */
   function layout() {
     const S = LI.S, off = +S.offsetY || 0, bottom = S.position === 'bottom';
     document.body.dataset.pos = bottom ? 'bottom' : 'top';
@@ -96,24 +155,27 @@
   }
 
   /* ---------- hover: the main process polls the cursor and sends window-relative coordinates ---------- */
-  function onCursor({ x, y }) {
+  const px = (name) => parseFloat(getComputedStyle(island).getPropertyValue(name));
+  function onCursor({ x, y, far }) {
     const r = island.getBoundingClientRect();
-    const pad = state === 'full' ? 12 : 8, gap = (+LI.S.offsetY || 0), bottom = LI.S.position === 'bottom';
-    // the gap between the screen edge and the capsule counts as part of the target (Fitts's law: you can slam the cursor to the edge)
-    const hit = x >= r.left - pad && x <= r.right + pad
-      && y >= r.top - pad - (bottom ? 0 : gap) && y <= r.bottom + pad + (bottom ? gap : 0);
+    const bottom = LI.S.position === 'bottom';
+    // the size the island is morphing TO (--w/--h), so a cursor already inside the final panel never reads as "left"
+    const target = { w: px('--w'), h: px('--h') };
+    const hit = !far && IL.hitTest({ x, y }, r, { pad: state === 'full' ? 12 : 8, gap: +LI.S.offsetY || 0, bottom, target });
     if (hit && !inside) {
       inside = true; clearTimeout(leaveT); clearTimeout(blurT);
-      if (state !== 'full') { clearTimeout(hoverT); hoverT = setTimeout(open, LI.S.hoverDelay ?? 120); }
+      if (state !== 'full' && hoverExpand()) { clearTimeout(hoverT); hoverT = setTimeout(open, openDelay()); }
     } else if (!hit && inside) {
       inside = false; clearTimeout(hoverT);
       if (state === 'full') scheduleClose();
     }
-    setInteractive(state === 'full' && hit);
+    // the window only catches mouse events while the cursor is on the visible island (and, in click-to-open mode, on the capsule)
+    setInteractive(hit && (state === 'full' || !hoverExpand()));
   }
 
   LI.island = {
-    get state() { return state; }, get mode() { return mode; }, get pinned() { return pinned; },
-    open, show, close, mini, indicators, layout, onCursor, scheduleClose, setMode, isInside: () => inside,
+    get state() { return state; }, get mode() { return mode; }, get workFocus() { return workFocus; }, get locked() { return locked; },
+    open, show, close, mini, indicators, layout, onCursor, scheduleClose, setMode, setLocked, isInside: () => inside,
+    decision: () => IL.decideCollapse(situation()),
   };
 })();

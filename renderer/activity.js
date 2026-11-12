@@ -30,20 +30,22 @@
     root.dataset.tone = a.tone || '';
     tile.innerHTML = iconHtml(a);
     title.textContent = a.title || '';
+    const subChanged = sub.textContent !== (a.sub || '');
     sub.textContent = a.sub || ''; sub.hidden = !a.sub;
+    if (subChanged && !swap && a.kind === 'media') LI.motion.enter(sub, 'up', { dur: 'ui' });   // a new lyric line / status fades in with a few px of movement
     const hasP = typeof a.progress === 'number';
     track.hidden = !hasP; if (hasP) fill.style.width = clamp(a.progress) + '%';
     val.textContent = a.value || ''; val.hidden = !a.value;
 
     const list = a.controls || [];
-    const s = list.map((c) => `${c.id}:${c.icon}:${c.primary ? 1 : 0}`).join('|');
+    const s = list.map((c) => `${c.id}:${c.icon}:${c.primary ? 1 : 0}:${c.disabled ? 1 : 0}`).join('|');
     if (s !== sig) {                                   // rebuild buttons only when their shape changes
       sig = s;
       ctrls.replaceChildren(...list.map((c, i) => {
         const b = document.createElement('button');
         b.className = 'act-btn fill' + (c.primary ? ' primary' : '');
         b.dataset.i = i; b.title = c.label; b.setAttribute('aria-label', c.label);
-        b.innerHTML = LI.icon(c.icon);
+        b.innerHTML = LI.icon(c.icon); b.disabled = !!c.disabled;
         return b;
       }));
     }

@@ -24,7 +24,7 @@
   const volIcon = (v, muted) => (muted ? 'volMute' : v <= 0 ? 'vol0' : v <= 50 ? 'vol1' : 'vol2');
   // colour swatch used as an icon (only accepts a plain hex colour)
   const swatch = (c) => (/^#[0-9a-f]{3,8}$/i.test(c || '') ? `<i class="swatch" style="background:${c}"></i>` : null);
-  const iconHtml = (a) => (a.color && swatch(a.color)) || icon(a.icon);
+  const iconHtml = (a) => (a.art && /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(a.art) ? `<img class="art" alt="" src="${a.art}">` : '') || (a.color && swatch(a.color)) || icon(a.icon);
 
   // tiny event bus. The main process never echoes a settings change back to the window that made it, and the island, the
   // plugin pages and the Control Centre all live in this one window, so they share changes through here.

@@ -23,6 +23,9 @@ contextBridge.exposeInMainWorld('api', {
   onOpenPanel: (cb) => on('open-panel', cb),          // { view?, plugin?, payload?, cc? }
   onToast: (cb) => on('toast', cb),
   onCoffee: (cb) => on('coffee', cb),
+  onHold: (cb) => on('hold', cb),                     // { key, on }: native dialogs hold the island open
+  onChargeSound: (cb) => on('charge-sound', cb),     // { kind: 'connect' | 'disconnect' }
+  onLyrics: (cb) => on('lyrics', cb),
   catalog: () => ipcRenderer.invoke('ey:catalog'),
   run: (id) => ipcRenderer.invoke('ey:run', String(id)),
 });

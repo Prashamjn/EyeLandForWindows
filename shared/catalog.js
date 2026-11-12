@@ -26,6 +26,9 @@
     { id: 'share', name: 'QuickShare', group: 'Connectivity', kind: 'page', key: 'Ctrl+Alt+H', desc: 'Send files to or receive files from your phone over Wi-Fi.' },
     { id: 'speed', name: 'Speed test', group: 'Connectivity', kind: 'page', key: 'Ctrl+Alt+S', desc: 'Measure ping, download and upload speed.' },
 
+    { id: 'audioTrim', name: 'Audio Trimmer', group: 'Audio Studio', kind: 'page', key: '', desc: 'Cut a section out of any audio file, with fade in and fade out.' },
+    { id: 'audioMerge', name: 'Audio Merger', group: 'Audio Studio', kind: 'page', key: '', desc: 'Join several tracks with fades and crossfades.' },
+
     { id: 'weather', name: 'Weather', group: 'System', kind: 'page', key: 'Ctrl+Alt+W', desc: 'Current weather and a 5 day forecast.' },
     { id: 'coffee', name: 'Coffee mode', group: 'System', kind: 'toggle', key: 'Ctrl+Alt+K', desc: 'Keeps the screen awake while it is on.' },
     { id: 'sysinfo', name: 'System monitor', group: 'System', kind: 'page', key: 'Ctrl+Alt+I', desc: 'CPU, memory, disks and device details.' },

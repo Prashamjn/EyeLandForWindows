@@ -13,8 +13,10 @@
   const outIcon = (n, form) => (form === 3 || form === 5 || HEADSET.test(n || '') ? 'headphones' : 'speaker');
   const KIND_ICON = { audio: 'headphones', phone: 'phone', computer: 'laptop', peripheral: 'mouse', other: 'bluetooth' };
 
+  const LONG_OPS = new Set(['wifi.connect', 'wifi.setPower', 'wifi.scan', 'bt.connect', 'bt.pair', 'bt.setPower', 'audio.setOutput']);
   const call = async (op, arg, { quiet } = {}) => {
-    const r = await window.cc.call(op, arg);
+    // long operations hold the island open (it must not collapse mid-connect); the hold has a maximum age, so it cannot stick
+    const r = LONG_OPS.has(op) ? await LI.hold.run('cc:' + op, window.cc.call(op, arg), 90000) : await window.cc.call(op, arg);
     if (!r.ok && !quiet) LI.toast(r.error || 'That did not work', true);
     return r;
   };

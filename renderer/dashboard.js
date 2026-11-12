@@ -13,13 +13,17 @@
   const nav = $('#nav');
   let currentView = 'home';
   VIEWS.forEach(([id, ic, label]) => nav.append(el('button', { 'data-view': id, title: label, 'aria-label': label, html: icon(ic) })));
+  const navLock = el('button', { class: 'nav-lock', title: 'Keep expanded', 'aria-label': 'Keep expanded', 'aria-pressed': 'false', html: icon('lockOpen') });
+  nav.append(navLock);
+  navLock.addEventListener('click', (e) => { e.stopPropagation(); LI.island.setLocked(!LI.island.locked); });
+  LI.bus.on('lock', (on) => { navLock.classList.toggle('lit', on); navLock.setAttribute('aria-pressed', String(on)); navLock.title = on ? 'Pinned open. Click to unpin' : 'Keep expanded'; navLock.innerHTML = icon(on ? 'lock' : 'lockOpen'); });
   function show(id) {
     if (id === 'control') return LI.workspace.openCC();
     currentView = id;
     $$('.vw').forEach((v) => v.classList.toggle('on', v.dataset.view === id));
-    $$('button', nav).forEach((b) => b.classList.toggle('on', b.dataset.view === id));
+    $$('button[data-view]', nav).forEach((b) => b.classList.toggle('on', b.dataset.view === id));
   }
-  nav.addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) show(b.dataset.view); });
+  nav.addEventListener('click', (e) => { const b = e.target.closest('button[data-view]'); if (b) show(b.dataset.view); });
 
   /* ================= clock (local system time; re-aligns itself to the minute) ================= */
   const clockTime = $('#clockTime'), clockDay = $('#clockDay'), clockDate = $('#clockDate');

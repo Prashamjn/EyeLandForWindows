@@ -10,11 +10,11 @@
   const { $, el, icon } = LI;
   const host = $('#pluginHost'), ccRoot = $('#ccRoot'), body = $('#wkBody');
   const title = $('#wkTitle'), ico = $('#wkIco'), key = $('#wkKey');
-  const bBack = $('#wkBack'), bHome = $('#wkHome'), bClose = $('#wkClose'), bFav = $('#wkFav'), bPin = $('#wkPin');
+  const bBack = $('#wkBack'), bHome = $('#wkHome'), bClose = $('#wkClose'), bFav = $('#wkFav'), bPin = $('#wkPin'), bLock = $('#wkLock');
   const banner = $('#wkBanner');
 
   bBack.innerHTML = icon('left'); bHome.innerHTML = icon('home'); bClose.innerHTML = icon('chevUp');
-  bFav.innerHTML = icon('star'); bPin.innerHTML = icon('pinOn');
+  bFav.innerHTML = icon('star'); bPin.innerHTML = icon('pinOn'); bLock.innerHTML = icon('lockOpen');
 
   let route = { type: 'dash' }, cleanup = null, token = 0;
   const PINNED_DEFAULT = ['mute', 'coffee', 'textExtract', 'colorPicker'];
@@ -58,11 +58,13 @@
   bBack.addEventListener('click', () => back());
   bHome.addEventListener('click', () => toDash('home'));
   bClose.addEventListener('click', () => LI.island.close());
+  bLock.addEventListener('click', () => LI.island.setLocked(!LI.island.locked));
+  LI.bus.on('lock', (on) => { bLock.classList.toggle('on', on); bLock.setAttribute('aria-pressed', String(on)); bLock.title = on ? 'Pinned open. Click to unpin' : 'Keep expanded'; bLock.innerHTML = icon(on ? 'lock' : 'lockOpen'); });
 
   function swapIn(node, dir) {
-    [host, ccRoot].forEach((n) => { n.hidden = n !== node; n.classList.remove('enter', 'enter-back'); });
+    [host, ccRoot].forEach((n) => { n.hidden = n !== node; });
     body.scrollTop = 0;
-    if (!LI.reduceMotion()) { void node.offsetWidth; node.classList.add(dir === 'back' ? 'enter-back' : 'enter'); }
+    LI.motion.enter(node, dir === 'back' ? 'back' : 'up');          // navigation transition (Web Animations, scaled by motion speed, off when reduced)
   }
   function unmountPlugin() {
     token++;                                          // any mount still in flight is discarded

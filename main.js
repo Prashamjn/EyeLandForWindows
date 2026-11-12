@@ -1,4 +1,5 @@
-const { app, BrowserWindow, ipcMain, screen, clipboard, Tray, Menu, nativeImage, globalShortcut, powerSaveBlocker, dialog, shell, session } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, clipboard, Tray, Menu, nativeImage, globalShortcut, powerSaveBlocker, dialog, shell, session, protocol, net: electronNet } = require('electron');
+const { pathToFileURL } = require('url');
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
@@ -16,11 +17,16 @@ const voice = require('./src/voice');
 const { createShare } = require('./src/share');
 const { uniquePath } = require('./src/util');
 const { createSystem } = require('./src/system');
+const IslandLogic = require('./shared/island-logic.js');
+const { createAudioStudio } = require('./src/audio');
+const { createLyricsService } = require('./src/lyrics');
 
 // Keep using the existing data folder (%APPDATA%\eyeland) so settings, tasks, voice memos etc. survive the rename to
 // Liquid Island. This must run before the single-instance lock, which is keyed on this folder.
 app.setPath('userData', path.join(app.getPath('appData'), 'eyeland'));
 if (!app.requestSingleInstanceLock()) app.quit();
+// Audio preview plays through liaudio://f/<id>. Only files the user picked or dropped (and Audio Studio inspected) get an id.
+protocol.registerSchemesAsPrivileged([{ scheme: 'liaudio', privileges: { standard: true, secure: true, stream: true, supportFetchAPI: true } }]);
 
 // The island window is a fixed, transparent, click-through canvas. It is sized for the largest state (the 700x500 workspace)
 // plus room for its shadow and is NEVER resized during animation; the island itself morphs inside it (renderer/island.css).
@@ -41,8 +47,13 @@ const defaults = {
   notifyBluetooth: true, notifyWifi: true, notifyVpn: true, notifyAudio: true, notifyMic: true, notifyPower: true, notifyDisplay: true, notifyBattery: true, notifyMs: 2800,
   ccMic: true, ccPower: true, ccNight: true, ccDisplay: true, ccCharging: true,
   monitorAudio: true, monitorNetwork: true, monitorBluetooth: true, monitorPower: true,
+  // Phase 3 (no settings migration needed: loadSettings merges these defaults under whatever the user saved)
+  hoverExpand: true, autoCollapse: true, collapseDelay: 350, motionMode: 'system',
+  mediaVisualizer: true, mediaArtwork: true, lyricsEnabled: false,
+  chargeSound: true, chargeVolume: 40, chargeDisconnectSound: false,
+  audioFormat: 'mp3', audioBitrate: 256, audioDir: '', audioRemember: true, audioLast: {},
 };
-let settings = { ...defaults }, win, tray, clips = [], lastClip = '', system;
+let settings = { ...defaults }, win, tray, clips = [], lastClip = '', system, audio;
 const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
 function loadSettings() {
   let saved = null;
@@ -68,6 +79,7 @@ const broadcast = (ch, data, except) => { if (win && !win.isDestroyed() && win.w
 const toast = (t) => send('toast', t);
 function saveSettings(partial, except) {
   settings = { ...settings, ...partial };
+  try { if (partial && 'lyricsEnabled' in partial) { lyricsKey = lyricsNoTl = ''; if (lastMedia) onMedia(lastMedia); } } catch { /* lyrics not initialised yet */ }
   saveFile();
   broadcast('settings', settings, except);
 }
@@ -95,7 +107,7 @@ function createWindow() {
     width: W, height: H, frame: false, transparent: true, resizable: false, movable: false,
     skipTaskbar: true, alwaysOnTop: true, focusable: false, hasShadow: false, show: false,
     backgroundColor: '#00000000',
-    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, autoplayPolicy: 'no-user-gesture-required' },
   });
   win.setAlwaysOnTop(true, 'screen-saver');
   win.setVisibleOnAllWorkspaces(true);
@@ -131,16 +143,39 @@ function openInIsland(opts) {
 }
 const openPlugin = (id, payload) => openInIsland({ plugin: id, payload });
 
-/* ---------- cursor tracking (hover detection: the island window ignores mouse events until it is expanded) ---------- */
-let lastPt = { x: -1, y: -1 };
-setInterval(() => {
-  if (!win || win.isDestroyed() || !win.isVisible()) return;
-  const p = screen.getCursorScreenPoint();
-  if (p.x === lastPt.x && p.y === lastPt.y) return;
-  lastPt = p;
-  const b = win.getBounds();
-  send('cursor', { x: p.x - b.x, y: p.y - b.y });
-}, 33);
+/* ---------- cursor tracking (hover detection: the island window ignores mouse events until it is expanded) ----------
+   Adaptive: 33 ms only while the cursor is near the island window, 100 ms in the wider area, 250 ms when far away. When the cursor
+   leaves the neighbourhood ONE final 'far' message is sent (so the renderer collapses) and nothing more is sent until it returns. */
+let lastPt = { x: -1, y: -1 }, farSent = false, pollTimer = null;
+function pollCursor() {
+  let ms = 250;
+  try {
+    if (win && !win.isDestroyed() && win.isVisible()) {
+      const p = screen.getCursorScreenPoint(), b = win.getBounds();
+      const z = IslandLogic.pollInterval(p, b); ms = z.ms;
+      if (z.zone === 'far') {
+        if (!farSent) { farSent = true; send('cursor', { x: -9999, y: -9999, far: true }); }
+      } else {
+        const moved = p.x !== lastPt.x || p.y !== lastPt.y;
+        if (moved || farSent) { lastPt = p; farSent = false; send('cursor', { x: p.x - b.x, y: p.y - b.y }); }
+      }
+    }
+  } catch (e) { console.error('[cursor]', e.message); }
+  pollTimer = setTimeout(pollCursor, ms);
+}
+pollTimer = setTimeout(pollCursor, 100);
+
+/* ---------- native dialogs hold the island open (the renderer must not collapse under a file picker) ----------
+   Every dialog goes through these wrappers. Native Windows permission prompts that do not come from Electron cannot be detected
+   directly; the window-blur logic in renderer/island.js covers them (see docs). */
+let dialogDepth = 0;
+for (const fn of ['showOpenDialog', 'showSaveDialog', 'showMessageBox']) {
+  const orig = dialog[fn].bind(dialog);
+  dialog[fn] = async (...a) => {
+    if (dialogDepth++ === 0) send('hold', { key: 'dialog', on: true });
+    try { return await orig(...a); } finally { if (--dialogDepth === 0) send('hold', { key: 'dialog', on: false }); }
+  };
+}
 
 /* ---------- native helpers ---------- */
 function lineReader(proc, onLine) {
@@ -168,7 +203,7 @@ function startWatchers() {
     const [kind, a] = l.split('|');
     if (kind === 'fs') { fullscreen = a === '1'; updateIsland(); }
   });
-  keepAlive('media.ps1', [], (l) => { try { send('media', JSON.parse(l)); } catch {} });
+  keepAlive('media.ps1', [], (l) => { try { const m = JSON.parse(l); send('media', m); onMedia(m); } catch {} });
 }
 // the island's volume / brightness sliders and the Mute quick action
 ipcMain.on('system-set', (_e, { target, value }) => {
@@ -378,6 +413,40 @@ ipcMain.handle('ey:share:start', (_e, { mode, files, ip }) => share.start({ mode
 ipcMain.handle('ey:share:stop', () => share.stop());
 ipcMain.handle('ey:share:snapshot', () => share.snapshot());
 
+/* ---------- synced lyrics (opt-in: Settings > Media). One request per new track; only timestamped lyrics are ever forwarded. ---------- */
+const lyricsSvc = createLyricsService({ getJSON: (u) => require('./src/net').fetchJSON(u, { timeout: 8000 }) });
+let lyricsKey = '', lyricsNoTl = '', lastMedia = null;
+function onMedia(m) {
+  lastMedia = m;
+  if (!settings.lyricsEnabled || !m || !m.title) { if (lyricsKey || lyricsNoTl) { lyricsKey = lyricsNoTl = ''; send('lyrics', { key: '', status: 'off' }); } return; }
+  const key = [m.app, m.artist, m.title].join('|');
+  if (key === lyricsKey) return;
+  // without a track length the match cannot be checked, and without a timeline the lines cannot be synchronised: say so, never guess
+  if (!(m.dur > 0)) { if (lyricsNoTl !== key) { lyricsNoTl = key; send('lyrics', { key, status: 'unavailable', reason: 'no-timeline' }); } return; }
+  lyricsNoTl = ''; lyricsKey = key;
+  send('lyrics', { key, status: 'loading' });
+  lyricsSvc.get({ title: m.title, artist: m.artist, album: m.album, duration: m.dur }).then((r) => {
+    if (key !== lyricsKey) return;                                          // the track changed while we were waiting
+    send('lyrics', { key, status: r.status, reason: r.reason, lines: r.status === 'ok' ? r.lines : undefined });
+  });
+}
+
+/* ---------- Audio Studio (Audio Trimmer + Audio Merger). FFmpeg runs as a child process, so the UI never blocks. ---------- */
+const audioReply = async (fn) => {
+  try { return { ok: true, data: await fn() }; }
+  catch (e) { return { ok: false, code: e.code || 'error', error: e.message || 'Audio Studio failed', detail: e.detail || '' }; }
+};
+ipcMain.handle('ey:audio:caps', () => audioReply(() => audio.capabilities()));
+ipcMain.handle('ey:audio:probe', (_e, p) => audioReply(() => audio.probe(p)));
+ipcMain.handle('ey:audio:peaks', (_e, p, n) => audioReply(() => audio.waveform(p, n)));
+ipcMain.handle('ey:audio:trim', (_e, id, req) => audioReply(() => audio.exportTrim(String(id), req)));
+ipcMain.handle('ey:audio:merge', (_e, id, req) => audioReply(() => audio.exportMerge(String(id), req)));
+ipcMain.handle('ey:audio:cancel', (_e, id) => audio.cancel(String(id)));
+ipcMain.handle('ey:audio:folder', async (e) => {
+  const r = await dialog.showOpenDialog(BrowserWindow.fromWebContents(e.sender), { properties: ['openDirectory', 'createDirectory'], defaultPath: settings.audioDir || app.getPath('music') });
+  return r.canceled || !r.filePaths[0] ? null : r.filePaths[0];
+});
+
 /* ---------- tray ---------- */
 function createTray() {
   tray = new Tray(nativeImage.createFromPath(path.join(__dirname, 'assets', 'tray.png')));
@@ -397,6 +466,12 @@ app.whenReady().then(() => {
   session.defaultSession.setPermissionCheckHandler((_wc, perm) => perm === 'media');
   app.setLoginItemSettings({ openAtLogin: !!settings.autostart });
   system = createSystem({ nativeDir, send, settings: S, openExternal: (u) => shell.openExternal(u), openPath: (p) => shell.openPath(p) });
+  audio = createAudioStudio({ defaultDir: () => settings.audioDir || path.join(app.getPath('music'), 'Liquid Island'), emit: (d) => send('ey:audio:progress', d), uniquePath });
+  protocol.handle('liaudio', (req) => {
+    const p = audio.resolvePreview(decodeURIComponent(new URL(req.url).pathname.slice(1)));
+    if (!p) return new Response('Not found', { status: 404 });
+    return electronNet.fetch(pathToFileURL(p).toString(), { headers: req.headers });   // forwards Range, so seeking works
+  });
   createWindow(); createTray(); startWatchers();
   system.applyMonitoring(); system.refreshDisplays();
   for (const ev of ['display-added', 'display-removed', 'display-metrics-changed']) screen.on(ev, () => system.refreshDisplays());
@@ -405,5 +480,5 @@ app.whenReady().then(() => {
 });
 app.on('second-instance', () => openInIsland({}));
 app.on('will-quit', () => globalShortcut.unregisterAll());
-app.on('before-quit', () => { app.isQuitting = true; share.stop(); if (system) system.shutdown(); procs.forEach((p) => { try { p.kill(); } catch {} }); });
+app.on('before-quit', () => { app.isQuitting = true; share.stop(); if (audio) audio.shutdown(); if (system) system.shutdown(); procs.forEach((p) => { try { p.kill(); } catch {} }); });
 app.on('window-all-closed', () => app.quit());
