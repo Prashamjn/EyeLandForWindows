@@ -1,5 +1,4 @@
-const { app, BrowserWindow, ipcMain, screen, clipboard, Tray, Menu, nativeImage, globalShortcut, powerSaveBlocker, dialog, shell, session, protocol, net: electronNet } = require('electron');
-const { pathToFileURL } = require('url');
+const { app, BrowserWindow, ipcMain, screen, clipboard, Tray, Menu, nativeImage, globalShortcut, powerSaveBlocker, dialog, shell, session, protocol } = require('electron');
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
@@ -470,7 +469,7 @@ app.whenReady().then(() => {
   protocol.handle('liaudio', (req) => {
     const p = audio.resolvePreview(decodeURIComponent(new URL(req.url).pathname.slice(1)));
     if (!p) return new Response('Not found', { status: 404 });
-    return electronNet.fetch(pathToFileURL(p).toString(), { headers: req.headers });   // forwards Range, so seeking works
+    return require('./src/audio/preview').serve(p, req);                              // answers Range requests, so seeking works
   });
   createWindow(); createTray(); startWatchers();
   system.applyMonitoring(); system.refreshDisplays();

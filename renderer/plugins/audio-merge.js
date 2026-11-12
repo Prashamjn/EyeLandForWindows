@@ -9,7 +9,7 @@ Plugins.register({
     const stage = h('div', { class: 'au' }); root.append(stage);
 
     const tracks = [], trans = [];                             // trans[i] sits between tracks[i] and tracks[i+1]
-    let cur = null, running = null, jobId = null, disposed = false, dragId = null, playing = null, stopAt = 0;
+    let status = null, cur = null, running = null, jobId = null, disposed = false, dragId = null, playing = null, stopAt = 0;
     const R = new Map();                                        // track id -> refs to its live elements
     const audio = new Audio(); audio.preload = 'metadata';
     const fmt = (s, d = 1) => T.formatTime(s, d);
@@ -132,8 +132,9 @@ Plugins.register({
     }
 
     /* ---------- live refresh (values only; no rebuild, so focus is never lost) ---------- */
-    function refresh() {
+    function refresh(keep) {
       if (disposed) return;
+      if (keep !== true) status = null;                       // any user change discards the last export status
       cur = P.validateMerge(model());
       // 1) bring the MODEL back inside the limits (a neighbour changed, a track was trimmed...), then validate again
       for (let pass = 0; pass < 3; pass++) {
@@ -174,9 +175,10 @@ Plugins.register({
       paintTimeline();
       const named = out.ready && out.get().name;
       exp.disabled = !!running || !cur.ok || !named;
-      if (!running && !result.dataset.keep) {
+      if (!running) {
         const hint = tracks.length < 2;
-        msg.className = 'au-msg' + (!cur.ok && !hint ? ' bad' : ''); msg.textContent = !out.ready ? 'FFmpeg is not available.' : cur.ok ? '' : hint ? '' : cur.errors[0];
+        if (status) { msg.className = 'au-msg' + status.cls; msg.textContent = status.text; }
+        else { msg.className = 'au-msg' + (!cur.ok && !hint ? ' bad' : ''); msg.textContent = !out.ready ? 'FFmpeg is not available.' : cur.ok ? '' : hint ? '' : cur.errors[0]; }
       }
     }
 
@@ -228,13 +230,12 @@ Plugins.register({
       const o = out.get();
       const req = { tracks: tracks.map((t) => ({ path: t.path, start: t.start, end: clipOf(t).end, volume: t.volume / 100, fadeIn: t.fadeIn, fadeOut: t.fadeOut })), transitions: trans.map((x) => ({ type: x.type, duration: x.duration, curve: x.curve })), output: o.output, dir: o.dir, name: o.name };
       await A.runExport(c, 'ey:audio:merge', req, {
-        begin(id) { running = id; jobId = id; stage.classList.add('au-busy'); exp.disabled = true; cancel.hidden = false; bar.hidden = false; bar.firstChild.style.width = '0%'; result.hidden = true; result.dataset.keep = '1'; msg.className = 'au-msg'; msg.textContent = 'Starting'; },
+        begin(id) { running = id; jobId = id; stage.classList.add('au-busy'); exp.disabled = true; cancel.hidden = false; bar.hidden = false; bar.firstChild.style.width = '0%'; result.hidden = true; status = null; msg.className = 'au-msg'; msg.textContent = 'Starting'; },
         progress(d) { if (d.phase === 'verify') msg.textContent = 'Checking the result'; else { bar.firstChild.style.width = (d.percent || 0) + '%'; msg.textContent = Math.round(d.percent || 0) + '%'; } },
-        done(r) { msg.className = 'au-msg ok'; msg.textContent = 'Done'; result.hidden = false; result.replaceChildren(h('div', { class: 'grow' }, h('div', { class: 'trunc', title: r.output }, r.output.split(/[\\/]/).pop()), h('div', { class: 'small faint' }, fmt(r.duration, 1) + '  ·  ' + c.fmtBytes(r.size) + '  ·  originals untouched')), h('button', { class: 'btn sm', onclick: () => c.ey.invoke('ey:reveal', r.output) }, c.icon('folder'), 'Show in folder')); },
-        fail(e) { msg.className = 'au-msg' + (e.code === 'cancelled' ? '' : ' bad'); msg.textContent = A.friendly(e); },
+        done(r) { status = { cls: ' ok', text: 'Done' }; result.hidden = false; result.replaceChildren(h('div', { class: 'grow' }, h('div', { class: 'trunc', title: r.output }, r.output.split(/[\\/]/).pop()), h('div', { class: 'small faint' }, fmt(r.duration, 1) + '  ·  ' + c.fmtBytes(r.size) + '  ·  originals untouched')), h('button', { class: 'btn sm', onclick: () => c.ey.invoke('ey:reveal', r.output) }, c.icon('folder'), 'Show in folder')); },
+        fail(e) { status = { cls: e.code === 'cancelled' ? '' : ' bad', text: A.friendly(e) }; },
       });
-      running = null; jobId = null; stage.classList.remove('au-busy'); cancel.hidden = true; bar.hidden = true; delete result.dataset.keep; refresh();
-      if (msg.textContent === 'Done') msg.textContent = '';
+      running = null; jobId = null; stage.classList.remove('au-busy'); cancel.hidden = true; bar.hidden = true; refresh(true);
     }
 
     paintList();

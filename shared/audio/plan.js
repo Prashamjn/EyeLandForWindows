@@ -191,7 +191,7 @@
     const aOther = prev && prev.type !== 'none' ? prev.duration : a.ownIn;      // the other edge of track i
     const bOther = next && next.type !== 'none' ? next.duration : b.ownOut;
     const m = Math.min(MAX_TRANSITION, a.duration - aOther, b.duration - bOther, a.duration - 0.01, b.duration - 0.01);
-    return Math.max(0, Math.floor(m * 10) / 10);
+    return Math.max(0, Math.floor(m * 10 + 1e-6) / 10);          // tenths of a second; the epsilon absorbs floating-point error (8 - 7.9 is 0.0999...)
   }
 
   // where every clip sits on the output timeline, and the total length

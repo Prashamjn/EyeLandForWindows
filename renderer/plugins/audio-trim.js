@@ -8,7 +8,7 @@ Plugins.register({
     root.append(c.head(c.meta.name, 'Cut a section out of an audio file. The original is never changed.'));
     const stage = h('div', { class: 'au' }); root.append(stage);
 
-    let info = null, peaks = null, start = 0, end = 0, previewSel = true, running = null, disposed = false, raf = 0, peakToken = 0, out = null, jobId = null;
+    let status = null, info = null, peaks = null, start = 0, end = 0, previewSel = true, running = null, disposed = false, raf = 0, peakToken = 0, out = null, jobId = null;
     const fadeIn = { enabled: false, duration: 2 }, fadeOut = { enabled: false, duration: 2 };
     const audio = new Audio(); audio.preload = 'metadata';
     const E = {};                                              // elements of the editor, filled by build()
@@ -84,7 +84,17 @@ Plugins.register({
 
       // fades
       const fadeRow = (label, st, key) => {
-        const chk = h('input', { type: 'checkbox', 'aria-label': label + ' on', onchange: () => { st.enabled = chk.checked; if (st.enabled && !(st.duration > 0)) st.duration = 2; ctl.setEnabled(st.enabled); refreshFades(); update(); } });
+        const other = () => (key === 'in' ? fadeOut : fadeIn), otherRow = () => (key === 'in' ? E.fo : E.fi);
+        const chk = h('input', { type: 'checkbox', 'aria-label': label + ' on', onchange: () => {
+          st.enabled = chk.checked; ctl.setEnabled(st.enabled);
+          if (st.enabled) {                                      // make room: a sensible default, and the other fade gives way if the two would overlap
+            const clip = clipDur(), d = Math.max(0.1, Math.min(2, Math.floor((clip / 2) * 10) / 10));
+            st.duration = d; ctl.set(d, true);
+            const o = other();
+            if (o.enabled && o.duration + d > clip) { o.duration = Math.max(0.1, Math.floor((clip - d) * 100) / 100); otherRow().ctl.set(o.duration, true); }
+          }
+          refreshFades(); update();
+        } });
         const ctl = A.secondsControl(h, { label, value: st.duration, max: () => (key === 'in' ? maxIn() : maxOut()), onChange: (v) => { st.duration = v; refreshFades(); update(); } });
         ctl.setEnabled(false); ctl.set(st.duration, true);
         return { chk, ctl, el: h('div', { class: 'au-fade' }, h('label', { class: 'au-chk' }, chk, h('span', { class: 'au-fl' }, label)), ctl.range, h('span', { class: 'row small muted' }, ctl.num, 's')) };
@@ -109,7 +119,8 @@ Plugins.register({
     const clipDur = () => Math.max(0, end - start);
     const maxIn = () => Math.max(0, Math.min(P.MAX_FADE, clipDur() - (fadeOut.enabled ? fadeOut.duration : 0)));
     const maxOut = () => Math.max(0, Math.min(P.MAX_FADE, clipDur() - (fadeIn.enabled ? fadeIn.duration : 0)));
-    function refreshFades() { if (!E.fi) return; for (const [st, r] of [[fadeIn, E.fi], [fadeOut, E.fo]]) { const was = st.duration; r.ctl.refresh(); st.duration = r.ctl.get(); if (st.duration !== was && st.enabled) st.duration = r.ctl.get(); } }
+    // only ENABLED fades are clamped to the available room (a disabled one keeps its value for when it is switched on)
+    function refreshFades() { if (!E.fi) return; for (const [st, r] of [[fadeIn, E.fi], [fadeOut, E.fo]]) { if (!st.enabled) continue; r.ctl.set(st.duration, true); st.duration = r.ctl.get(); } }
 
     function setStart(v) { if (!info) return false; if (v < 0 || v > info.duration - P.MIN_CLIP) return false; if (v > end - P.MIN_CLIP) end = Math.min(info.duration, v + P.MIN_CLIP); start = v; refreshFades(); update(); return true; }
     function setEnd(v) { if (!info) return false; if (v > info.duration + 0.001 || v < P.MIN_CLIP) return false; v = Math.min(v, info.duration); if (v < start + P.MIN_CLIP) start = Math.max(0, v - P.MIN_CLIP); end = v; refreshFades(); update(); return true; }
@@ -119,8 +130,10 @@ Plugins.register({
     let paintQ = 0;
     function paintWave() { if (paintQ || !E.cv) return; paintQ = requestAnimationFrame(() => { paintQ = 0; if (!disposed && info && E.cv.isConnected) A.drawWave(E.cv, peaks, { start, end, duration: info.duration }); }); }
     function validation() { return P.validateTrim({ duration: info.duration, start, end, fadeIn, fadeOut, output: out.ready ? out.get().output : { format: 'mp3' } }); }
-    function update() {
+    // `keep` = refresh without discarding the last export status (finish / cancel / error); any user change calls update() and clears it
+    function update(keep) {
       if (!info || !E.sel) return;
+      if (keep !== true) status = null;
       E.sel.style.left = pct(start); E.sel.style.width = ((end - start) / info.duration) * 100 + '%';
       E.hs.style.left = pct(start); E.he.style.left = pct(end);
       E.hs.setAttribute('aria-valuenow', start.toFixed(2)); E.he.setAttribute('aria-valuenow', end.toFixed(2));
@@ -128,7 +141,10 @@ Plugins.register({
       const v = validation(); E.fi.ctl.range.max = String(Math.max(0.1, maxIn())); E.fo.ctl.range.max = String(Math.max(0.1, maxOut()));
       const bad = !v.ok || !out.ready || !out.get().name;
       E.exp.disabled = !!running || bad;
-      if (!running && !E.result.dataset.keep) { E.msg.className = 'au-msg' + (v.ok ? '' : ' bad'); E.msg.textContent = out.ready ? (v.ok ? '' : v.errors[0]) : 'FFmpeg is not available.'; }
+      if (!running) {
+        if (status) { E.msg.className = 'au-msg' + status.cls; E.msg.textContent = status.text; }
+        else { E.msg.className = 'au-msg' + (v.ok ? '' : ' bad'); E.msg.textContent = out.ready ? (v.ok ? '' : v.errors[0]) : 'FFmpeg is not available.'; }
+      }
       paintWave();
     }
 
@@ -187,16 +203,15 @@ Plugins.register({
       const o = out.get();
       const req = { input: info.path, start, end, fadeIn: { ...fadeIn }, fadeOut: { ...fadeOut }, output: o.output, dir: o.dir, name: o.name };
       await A.runExport(c, 'ey:audio:trim', req, {
-        begin(id) { running = id; jobId = id; stage.classList.add('au-busy'); E.exp.disabled = true; E.cancel.hidden = false; E.bar.hidden = false; E.bar.firstChild.style.width = '0%'; E.result.hidden = true; E.result.dataset.keep = '1'; E.msg.className = 'au-msg'; E.msg.textContent = 'Starting'; },
+        begin(id) { running = id; jobId = id; stage.classList.add('au-busy'); E.exp.disabled = true; E.cancel.hidden = false; E.bar.hidden = false; E.bar.firstChild.style.width = '0%'; E.result.hidden = true; status = null; E.msg.className = 'au-msg'; E.msg.textContent = 'Starting'; },
         progress(d) { if (d.phase === 'verify') E.msg.textContent = 'Checking the result'; else { E.bar.firstChild.style.width = (d.percent || 0) + '%'; E.msg.textContent = Math.round(d.percent || 0) + '%'; } },
         done(r) {
-          E.msg.className = 'au-msg ok'; E.msg.textContent = 'Done';
+          status = { cls: ' ok', text: 'Done' };
           E.result.hidden = false; E.result.replaceChildren(h('div', { class: 'grow' }, h('div', { class: 'trunc', title: r.output }, r.output.split(/[\\/]/).pop()), h('div', { class: 'small faint' }, fmt(r.duration, 2) + '  ·  ' + c.fmtBytes(r.size) + '  ·  original untouched')), h('button', { class: 'btn sm', onclick: () => c.ey.invoke('ey:reveal', r.output) }, c.icon('folder'), 'Show in folder'));
         },
-        fail(e) { E.msg.className = 'au-msg' + (e.code === 'cancelled' ? '' : ' bad'); E.msg.textContent = A.friendly(e); },
+        fail(e) { status = { cls: e.code === 'cancelled' ? '' : ' bad', text: A.friendly(e) }; },
       });
-      running = null; jobId = null; stage.classList.remove('au-busy'); E.cancel.hidden = true; E.bar.hidden = true; delete E.result.dataset.keep; E.exp.disabled = false; update();
-      if (E.msg.textContent === 'Done') { E.msg.textContent = ''; }
+      running = null; jobId = null; stage.classList.remove('au-busy'); E.cancel.hidden = true; E.bar.hidden = true; E.exp.disabled = false; update(true);
     }
 
     return () => {                                              // cleanup when the page closes

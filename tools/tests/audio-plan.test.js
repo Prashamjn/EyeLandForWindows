@@ -122,3 +122,18 @@ test('merge args: each input is one argv element', () => {
   assert.deepEqual(a.filter((x, i) => a[i - 1] === '-i'), ['/a b/1.mp3', '/a b/2.mp3']);
   assert.ok(a.includes('pcm_s24le'));
 });
+
+const PV = require('../../src/audio/preview.js');
+test('preview: Range header parsing', () => {
+  assert.deepEqual(PV.parseRange('bytes=0-99', 1000), { start: 0, end: 99 }); assert.deepEqual(PV.parseRange('bytes=500-', 1000), { start: 500, end: 999 });
+  assert.deepEqual(PV.parseRange('bytes=-100', 1000), { start: 900, end: 999 }); assert.deepEqual(PV.parseRange('bytes=900-5000', 1000), { start: 900, end: 999 });
+  assert.equal(PV.parseRange('bytes=1000-', 1000), 'unsatisfiable'); assert.equal(PV.parseRange('bytes=50-10', 1000), 'unsatisfiable'); assert.equal(PV.parseRange('bytes=-0', 1000), 'unsatisfiable');
+  assert.equal(PV.parseRange(null, 1000), null); assert.equal(PV.parseRange('items=0-5', 1000), null); assert.equal(PV.parseRange('bytes=0-5,10-20', 1000), null, 'multi-range is served whole');
+  assert.equal(PV.mimeFor('/x/Song.MP3'), 'audio/mpeg'); assert.equal(PV.mimeFor('/x/y.xyz'), 'application/octet-stream');
+});
+
+test('maxTransition: floating-point error does not lose a valid 0.1 s', () => {
+  const v = merge([trk(12), trk(8), trk(6)], [{ type: 'crossfade', duration: 7.9 }, { type: 'none' }]);
+  assert.equal(P.maxTransition(v.plan, 1), 0.1);
+  assert.equal(P.maxTransition(merge([trk(12), trk(8)], [{ type: 'none' }]).plan, 0), 7.9);
+});
