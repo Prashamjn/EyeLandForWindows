@@ -55,11 +55,19 @@ module.exports = async (c) => {
   ok('dashboard -> plugin: grows to 700x500 smoothly, no overshoot', Math.abs(ws[ws.length - 1] - 700) < 1 && Math.abs(hs[hs.length - 1] - 500) < 1 && Math.max(...ws) <= 700.5 && Math.max(...hs) <= 500.5 && ws.every((w, i) => i === 0 || w >= ws[i - 1] - 0.01), `max ${Math.max(...ws).toFixed(1)}x${Math.max(...hs).toFixed(1)}`);
   ok('dashboard -> plugin: spread over many frames', s.filter((x) => x[0] > 621 && x[0] < 699).length >= 6, s.filter((x) => x[0] > 621 && x[0] < 699).length + ' in-between frames');
 
-  // ---- pinned: stays open when the cursor leaves; keyboard focus only for explicit workspace use
+  // ---- workspace focus vs collapse. PHASE 3 (DELIBERATE CHANGE): this used to assert that moving the cursor away does NOT close an open
+  // plugin (the keyboard-focus "pin" also blocked collapse). Now focus and collapse are separate: a plugin keeps the window focusable,
+  // and the island collapses from it when the cursor leaves. The user's explicit Pin (lock) is what keeps it open (scenario 10).
   await ev("LI.workspace.openPlugin('calc'); 0"); await wait(600);
   ok('plugin open => window focusable (keyboard works, native dialogs can attach)', win.isFocusable() === true);
-  c.send('cursor', { x: 5, y: 600 }); await wait(900);
-  ok('moving the cursor away does NOT close an open plugin', await ev("LI.island.state === 'full' && LI.island.mode === 'work'"));
+  const r0 = JSON.parse(await ev("JSON.stringify(document.getElementById('island').getBoundingClientRect())"));
+  c.send('cursor', { x: Math.round(r0.left + r0.width / 2), y: Math.round(r0.top + 200) }); await wait(150);
+  ok('cursor over the open plugin: stays open', await ev("LI.island.state === 'full' && LI.island.isInside()"));
+  c.send('cursor', { x: 5, y: 600 }); await wait(150);
+  ok('cursor just left: still open during the grace period', await ev("LI.island.state === 'full'"));
+  await wait(900);
+  ok('moving the cursor away CLOSES an open plugin after the grace period (was: stayed open)', await ev("LI.island.state === 'compact'"));
+  await ev("LI.workspace.openPlugin('calc'); 0"); await wait(600);
   await ev("LI.island.close(); 0"); await wait(500);
   ok('collapsed => window not focusable again (background activity never steals focus)', win.isFocusable() === false);
   const rect = JSON.parse(await ev("JSON.stringify(document.getElementById('island').getBoundingClientRect())"));

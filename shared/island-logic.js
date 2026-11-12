@@ -48,7 +48,7 @@
     if (s.locked) return { collapse: false, reason: 'locked' };
     if (s.holds) return { collapse: false, reason: 'hold' };
     // a focused editable control blocks collapse only while it is in use; an abandoned one stops blocking after `inputIdleMs`
-    if (s.editableFocused && s.sinceInputMs < (s.inputIdleMs ?? 15000)) return { collapse: false, reason: 'typing' };
+    if (s.editableFocused && s.sinceInputMs < (s.inputIdleMs ?? 10000)) return { collapse: false, reason: 'typing' };
     if (s.sinceKeyMs < (s.keyGraceMs ?? 1200)) return { collapse: false, reason: 'keyboard' };
     return { collapse: true, reason: 'left' };
   }

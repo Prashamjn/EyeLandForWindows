@@ -43,7 +43,7 @@ test('decideCollapse: each blocker', () => {
   no({ holds: true }, 'hold'); no({ editableFocused: true, sinceInputMs: 2000 }, 'typing'); no({ sinceKeyMs: 300 }, 'keyboard');
 });
 test('decideCollapse: an abandoned focused input stops blocking after the idle grace', () => {
-  assert.equal(L.decideCollapse({ ...base, editableFocused: true, sinceInputMs: 16000 }).collapse, true);
+  assert.equal(L.decideCollapse({ ...base, editableFocused: true, sinceInputMs: 11000 }).collapse, true);
   assert.equal(L.decideCollapse({ ...base, editableFocused: true, sinceInputMs: 5000, inputIdleMs: 4000 }).collapse, true);
 });
 test('decideCollapse: auto-collapse off never collapses by hover', () => assert.equal(L.decideCollapse({ ...base, autoCollapse: false }).collapse, false));

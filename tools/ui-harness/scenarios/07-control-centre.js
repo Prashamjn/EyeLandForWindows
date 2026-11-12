@@ -162,7 +162,7 @@ module.exports = async (c) => {
   inject('bt', 'bt', { radio: 'on', devices: [{ id: 'Bluetooth#buds', name: 'Galaxy Buds', connected: true, paired: true, kind: 'audio', le: false }, { id: 'Bluetooth#mouse', name: 'MX Master', connected: true, paired: true, kind: 'peripheral', le: true }, { id: 'Bluetooth#kb', name: 'Keychron K2', connected: true, paired: true, kind: 'peripheral', le: false }] });
   await wait(700);
   ok('device event expands the compact island to the notification (mini)', await ev("LI.island.state === 'mini' && document.getElementById('mTitle').textContent === 'Galaxy Buds connected'"), await ev("document.getElementById('mTitle').textContent"));
-  ok('notification does not take keyboard focus (window not focusable)', await ev("LI.island.pinned === false"));
+  ok('notification does not take keyboard focus (window not focusable)', await ev("LI.island.workFocus === false"));
   await c.shot('56_notification_mini');
   await wait(3600);
   ok('notification collapses back to compact on its own', await ev("LI.island.state === 'compact'"));

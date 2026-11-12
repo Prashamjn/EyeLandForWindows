@@ -86,11 +86,12 @@
   }
 
   /* ---------- collapse ---------- */
-  const editable = () => {
-    const a = document.activeElement; if (!a || a === document.body) return false;
+  const isEditable = (a) => {
+    if (!a || a === document.body || !a.tagName) return false;
     if (a.isContentEditable || a.tagName === 'TEXTAREA') return true;
     return a.tagName === 'INPUT' && !/^(range|checkbox|radio|button|submit|reset|color|file|image)$/i.test(a.type);
   };
+  const editable = () => isEditable(document.activeElement);
   const situation = () => ({ autoCollapse: autoCollapse(), state, inside, locked, holds: LI.hold.active(), editableFocused: editable(), sinceInputMs: now() - lastInputAt, sinceKeyMs: now() - lastKeyAt });
   function tryClose() {
     const d = IL.decideCollapse(situation());
@@ -127,7 +128,9 @@
     LI.workspace.escape();
   }, true);
   document.addEventListener('input', () => { lastInputAt = now(); }, true);
-  document.addEventListener('focusin', () => { if (editable()) lastInputAt = now(); }, true);
+  // only DELIBERATE use counts as "typing": a click into a field or real key presses. A plugin that autofocuses its input when it opens
+  // is not the user typing, so it must not keep the island open.
+  document.addEventListener('pointerdown', (e) => { if (isEditable(e.target)) lastInputAt = now(); }, true);
   // a file being dragged over the island (from Explorer) must not collapse it mid-drop; the hold has a short maximum age
   let dragDepth = 0;
   window.addEventListener('dragenter', () => { dragDepth++; LI.hold.begin('drag', 20000); });
