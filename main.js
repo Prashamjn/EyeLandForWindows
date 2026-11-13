@@ -142,16 +142,22 @@ function openInIsland(opts) {
 }
 const openPlugin = (id, payload) => openInIsland({ plugin: id, payload });
 
+/* ---------- optional hover trace for Windows verification (set LI_HOVER_LOG=1, or a folder): diagnostics/hover-<time>.log ---------- */
+const HOVER_LOG = process.env.LI_HOVER_LOG ? path.join(process.env.LI_HOVER_LOG === '1' ? path.join(__dirname, 'diagnostics') : process.env.LI_HOVER_LOG, `hover-${new Date().toISOString().replace(/[:.]/g, '-')}.log`) : '';
+const hlog = (line) => { if (!HOVER_LOG) return; try { fs.mkdirSync(path.dirname(HOVER_LOG), { recursive: true }); fs.appendFileSync(HOVER_LOG, `${new Date().toISOString()} ${line}\n`); } catch { /* diagnostics only */ } };
+const describeDisplays = () => screen.getAllDisplays().map((d) => `#${d.id}${d.id === screen.getPrimaryDisplay().id ? '(primary)' : ''} bounds=${JSON.stringify(d.bounds)} scale=${d.scaleFactor}`).join('  ');
+
 /* ---------- cursor tracking (hover detection: the island window ignores mouse events until it is expanded) ----------
    Adaptive: 33 ms only while the cursor is near the island window, 100 ms in the wider area, 250 ms when far away. When the cursor
    leaves the neighbourhood ONE final 'far' message is sent (so the renderer collapses) and nothing more is sent until it returns. */
-let lastPt = { x: -1, y: -1 }, farSent = false, pollTimer = null;
+let lastPt = { x: -1, y: -1 }, farSent = false, pollTimer = null, lastZone = '';
 function pollCursor() {
   let ms = 250;
   try {
     if (win && !win.isDestroyed() && win.isVisible()) {
       const p = screen.getCursorScreenPoint(), b = win.getBounds();
       const z = IslandLogic.pollInterval(p, b); ms = z.ms;
+      if (HOVER_LOG && z.zone !== lastZone) { lastZone = z.zone; const d = screen.getDisplayNearestPoint(p); hlog(`cursor zone=${z.zone} at=${p.x},${p.y} display=#${d.id} scale=${d.scaleFactor} window=${JSON.stringify(b)}`); }
       if (z.zone === 'far') {
         if (!farSent) { farSent = true; send('cursor', { x: -9999, y: -9999, far: true }); }
       } else {
@@ -171,8 +177,8 @@ let dialogDepth = 0;
 for (const fn of ['showOpenDialog', 'showSaveDialog', 'showMessageBox']) {
   const orig = dialog[fn].bind(dialog);
   dialog[fn] = async (...a) => {
-    if (dialogDepth++ === 0) send('hold', { key: 'dialog', on: true });
-    try { return await orig(...a); } finally { if (--dialogDepth === 0) send('hold', { key: 'dialog', on: false }); }
+    if (dialogDepth++ === 0) { send('hold', { key: 'dialog', on: true }); hlog(`dialog ${fn} opened (hold on)`); }
+    try { return await orig(...a); } finally { if (--dialogDepth === 0) { send('hold', { key: 'dialog', on: false }); hlog(`dialog ${fn} closed (hold off)`); } }
   };
 }
 
@@ -472,6 +478,12 @@ app.whenReady().then(() => {
     return require('./src/audio/preview').serve(p, req);                              // answers Range requests, so seeking works
   });
   createWindow(); createTray(); startWatchers();
+  if (HOVER_LOG) {
+    hlog(`hover trace started. electron=${process.versions.electron} os=${process.platform} ${require('os').release()} displays: ${describeDisplays()}`);
+    win.webContents.on('console-message', (e, level, message) => { const m = (e && e.message) || (typeof message === 'string' ? message : ''); if (m.startsWith('[hover]')) hlog(m.slice(8)); });
+    screen.on('display-metrics-changed', () => hlog('display metrics changed: ' + describeDisplays()));
+    screen.on('display-added', () => hlog('display added: ' + describeDisplays())); screen.on('display-removed', () => hlog('display removed: ' + describeDisplays()));
+  }
   system.applyMonitoring(); system.refreshDisplays();
   for (const ev of ['display-added', 'display-removed', 'display-metrics-changed']) screen.on(ev, () => system.refreshDisplays());
   const errs = registerAll();

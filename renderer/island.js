@@ -16,9 +16,11 @@
   const mIco = $('#mIco'), mFill = $('#mFill'), mTitle = $('#mTitle'), mSub = $('#mSub'), mVal = $('#mVal');
   const cIco = $('#cIco'), cTimer = $('#cTimer'), cViz = $('#cViz');
   let state = 'compact', mode = 'dash', inside = false, interactive = false, workFocus = false, locked = false;
-  let hoverT = 0, leaveT = 0, miniT = 0, blurT = 0, lastKeyAt = 0, lastInputAt = 0;
+  let hoverT = 0, leaveT = 0, miniT = 0, blurT = 0, lastKeyAt = 0, lastInputAt = 0, lastReason = '';
   const RANK = { compact: 0, mini: 1, full: 2 };
   const now = () => performance.now();
+  // Rare, cheap trace lines (state changes, collapse decisions, holds). main.js writes them to diagnostics/hover-*.log only when LI_HOVER_LOG is set.
+  const trace = (kind, data) => { try { console.debug('[hover] ' + JSON.stringify({ t: Math.round(performance.now()), kind, ...data })); } catch { /* never let tracing break the UI */ } };
 
   /* ---------- settings (read live, so changes apply immediately) ---------- */
   const hoverExpand = () => LI.S.hoverExpand !== false;
@@ -35,6 +37,7 @@
   }
   function setState(s) {
     if (s !== state) island.dataset.dir = RANK[s] > RANK[state] ? 'expand' : 'collapse';
+    if (s !== state) trace('state', { from: state, to: s, mode, inside, locked });
     state = s; island.dataset.state = s; syncFocus();
   }
   function setMode(m) {
@@ -45,7 +48,7 @@
   /* ---------- the deliberate lock (Pin) ---------- */
   function setLocked(v) {
     v = !!v; if (v === locked) return;
-    locked = v; island.dataset.locked = v ? '1' : '';
+    locked = v; island.dataset.locked = v ? '1' : ''; trace('lock', { locked });
     LI.bus.emit('lock', locked);
     if (!locked && state === 'full' && !inside) scheduleClose();
   }
@@ -95,13 +98,15 @@
   const situation = () => ({ autoCollapse: autoCollapse(), state, inside, locked, holds: LI.hold.active(), editableFocused: editable(), sinceInputMs: now() - lastInputAt, sinceKeyMs: now() - lastKeyAt });
   function tryClose() {
     const d = IL.decideCollapse(situation());
-    if (d.collapse) return close();
+    if (d.reason !== lastReason) { lastReason = d.reason; trace('decision', { ...d, holds: LI.hold.keys() }); }
+    if (d.collapse) { lastReason = ''; return close(); }
     if (['hold', 'typing', 'keyboard'].includes(d.reason)) leaveT = setTimeout(tryClose, 300);   // something temporary is in the way: look again shortly
   }
   // the cursor left: wait the grace period, then decide (called by hover logic, the task input blur handler and when a hold ends)
   function scheduleClose(ms) {
     clearTimeout(leaveT);
     if (!autoCollapse() || state !== 'full') return;
+    lastReason = ''; trace('scheduleClose', { ms: ms == null ? collapseDelay() : ms });
     leaveT = setTimeout(tryClose, ms == null ? collapseDelay() : ms);
   }
   function close() { clearTimeout(leaveT); clearTimeout(blurT); clearTimeout(hoverT); locked = false; island.dataset.locked = ''; LI.bus.emit('lock', false); setState('compact'); setInteractive(false); }
@@ -109,6 +114,7 @@
 
   // another app took focus while a workspace is open (never while holds are active: a native dialog also blurs the window)
   window.addEventListener('blur', () => {
+    trace('blur', { state, workFocus, locked, holds: LI.hold.keys() });
     const s = +LI.S.blurCollapseSec;
     if (state !== 'full' || locked || !(s > 0) || !workFocus) return;
     clearTimeout(blurT);
@@ -165,6 +171,7 @@
     // the size the island is morphing TO (--w/--h), so a cursor already inside the final panel never reads as "left"
     const target = { w: px('--w'), h: px('--h') };
     const hit = !far && IL.hitTest({ x, y }, r, { pad: state === 'full' ? 12 : 8, gap: +LI.S.offsetY || 0, bottom, target });
+    if (hit !== inside) trace('cursor', { inside: hit, state, x: Math.round(x), y: Math.round(y), rect: [Math.round(r.left), Math.round(r.top), Math.round(r.right), Math.round(r.bottom)], target, far: !!far });
     if (hit && !inside) {
       inside = true; clearTimeout(leaveT); clearTimeout(blurT);
       if (state !== 'full' && hoverExpand()) { clearTimeout(hoverT); hoverT = setTimeout(open, openDelay()); }

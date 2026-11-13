@@ -116,9 +116,9 @@ test('trim: invalid requests are rejected before FFmpeg runs', { skip }, async (
 
 test('cancel: kills FFmpeg, removes the partial file, reports cancelled, and a new job can start', { skip }, async () => {
   const big = path.join(tmp, 'big.wav');
-  spawnSync(BIN, ['-y', '-v', 'error', '-f', 'lavfi', '-i', 'sine=f=300:r=44100:d=5400', '-ac', '2', big], { maxBuffer: 1 << 20 });
+  spawnSync(BIN, ['-y', '-v', 'error', '-f', 'lavfi', '-i', 'sine=f=300:r=44100:d=1800', '-ac', '2', big], { maxBuffer: 1 << 20 });
   const ev = []; const S = mk(ev); const dir = path.join(tmp, 'cancel');
-  const p = S.exportTrim('c1', { input: big, start: 0, end: 5400, output: { format: 'flac' }, name: 'big', dir });
+  const p = S.exportTrim('c1', { input: big, start: 0, end: 1800, output: { format: 'flac' }, name: 'big', dir });
   const t0 = Date.now(); while (!ev.some((e) => e.phase === 'run') && Date.now() - t0 < 20000) await new Promise((r) => setTimeout(r, 25));
   assert.ok(S.busy()); assert.ok(S.cancel('c1'));
   await assert.rejects(p, { code: 'cancelled' });
@@ -130,7 +130,7 @@ test('cancel: kills FFmpeg, removes the partial file, reports cancelled, and a n
 });
 test('only one export at a time', { skip }, async () => {
   const big = path.join(tmp, 'big.wav'); const S = mk(); const dir = path.join(tmp, 'busy');
-  const first = S.exportTrim('k1', { input: big, start: 0, end: 5400, output: { format: 'flac' }, name: 'a', dir });
+  const first = S.exportTrim('k1', { input: big, start: 0, end: 1800, output: { format: 'flac' }, name: 'a', dir });
   await new Promise((r) => setTimeout(r, 300));
   await assert.rejects(S.exportTrim('k2', { input: big, start: 0, end: 10, output: { format: 'wav' }, name: 'b', dir }), { code: 'busy' });
   S.cancel('k1'); await assert.rejects(first, { code: 'cancelled' });

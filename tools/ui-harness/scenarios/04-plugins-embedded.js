@@ -32,7 +32,7 @@ module.exports = async (c) => {
   // back navigation + state restore
   await c.ev("LI.workspace.openPlugin('calc'); 0"); await c.wait(500);
   await c.ev("document.getElementById('wkBack').click(); 0"); await c.wait(500);
-  ok('Back returns to the dashboard Plugins view', await c.ev("LI.workspace.route().type === 'dash' && LI.island.mode === 'dash' && document.querySelector('.vw.on').dataset.view === 'plugins' && !LI.island.pinned"));
+  ok('Back returns to the dashboard Plugins view', await c.ev("LI.workspace.route().type === 'dash' && LI.island.mode === 'dash' && document.querySelector('.vw.on').dataset.view === 'plugins' && !LI.island.workFocus"));
   ok('plugin page was unmounted (no leftover DOM)', await c.ev("document.getElementById('pluginHost').children.length === 0"));
   await c.ev("LI.workspace.openPlugin('calc'); 0"); await c.wait(400);
   await c.ev("document.getElementById('wkHome').click(); 0"); await c.wait(400);
