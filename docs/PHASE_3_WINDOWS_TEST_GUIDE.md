@@ -19,6 +19,14 @@ npm install
 | `npm run diag:audio` | `21/21 checks passed` (fewer format lines if this FFmpeg build lacks Opus or Vorbis; MP3, WAV and FLAC are required). |
 | Push the branch | The `windows-native` workflow runs the same on a real Windows runner (it has never run before). |
 
+## 1b. If Now Playing or the charger is not working
+Start the app from a terminal (`npm start`) and keep it visible: charger decisions print as `[charge] ...` and helper problems as `[media.ps1] ...`.
+| Check | Command | What it tells me |
+|---|---|---|
+| Does Windows report the playing media? | Play a song, then `.\tools\windows\probe-media.ps1` | Prints each message the helper sends. `RESULT: ... NOTHING` or an exit means the helper itself is the problem; messages here but nothing in the island means the app side. Send the output. |
+| Does the power helper see the charger? | `node tools\windows\diagnose.js --watch 60`, plug and unplug during it | Lists the power events that arrive. Send the JSON. |
+| Why was there no chime? | Plug in with `npm start` running | Look for the `[charge]` line (it names the reason). |
+
 ## 2. Hover, expansion and collapse
 ```powershell
 .\tools\windows\run-hover-log.ps1

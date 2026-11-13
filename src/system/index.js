@@ -57,7 +57,11 @@ function createSystem({ nativeDir, send, settings, openExternal, openPath }) {
       const prev = cache.battery;
       apply('battery', d, (p, n) => N.battery(p, n, batteryFlags));
       const kind = N.chargerEvent(prev, d);                               // real event only: never on the first reading, never while merely connected
-      if (kind && !quiet && chargeGate(kind)) { const pol = N.chargePolicy(kind, settings(), cache.audio); if (pol.play) send('charge-sound', { kind, volume: pol.volume }); }
+      if (kind) {                                                          // rare, so every outcome is logged (visible in the terminal that runs `npm start`)
+        const gate = !quiet && chargeGate(kind), pol = gate ? N.chargePolicy(kind, settings(), cache.audio) : null;
+        console.error(`[charge] ${kind}: ` + (quiet ? 'ignored (start-up quiet period)' : !gate ? 'ignored (duplicate within 4 s)' : pol.play ? `sound sent (volume ${Math.round(pol.volume * 100)}%)` : `no sound (${pol.why})`));
+        if (pol && pol.play) send('charge-sound', { kind, volume: pol.volume });
+      }
     }
     else if (ev === 'powermode') apply('powermode', d, N.powermode);
     else if (ev === 'brightness') { cache.bri = d.value; cache.briError = d.error || null; cc({ kind: 'state', key: 'bri', data: d.value }); cc({ kind: 'state', key: 'briError', data: cache.briError }); send('system', { kind: 'bri', value: d.value }); }
