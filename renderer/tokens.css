@@ -30,12 +30,21 @@
   --r-card: 16px;
   --r-ctl: 10px;
 
-  /* motion: one decelerating curve, no overshoot */
-  --ease-out: cubic-bezier(.32, .72, 0, 1);
-  --ease-std: cubic-bezier(.4, 0, .2, 1);
-  --t-morph: calc(.5s / var(--speed));
+  /* motion system (Phase 3). Every duration is scaled by the user's motion speed. JS reads the same numbers from LI.motion.DUR. */
+  --ease-out: cubic-bezier(.32, .72, 0, 1);      /* decelerating: things arriving */
+  --ease-std: cubic-bezier(.4, 0, .2, 1);        /* standard in-out */
+  --ease-in: cubic-bezier(.4, 0, 1, 1);          /* accelerating: things leaving */
+  --dur-ui: calc(.15s / var(--speed));           /* small interactions 120-180 ms */
+  --dur-nav: calc(.21s / var(--speed));          /* navigation 180-240 ms */
+  --dur-expand: calc(.3s / var(--speed));        /* island expansion 250-350 ms */
+  --dur-collapse: calc(.24s / var(--speed));     /* island collapse 200-300 ms */
+  --dur-notice: calc(.26s / var(--speed));       /* device notification in / out */
+  --t-island: var(--dur-expand);                 /* switched to --dur-collapse by #island[data-dir="collapse"] */
+  --ease-island: var(--ease-out);
+  /* legacy names, now aliases so existing rules follow the system */
+  --t-morph: var(--t-island);
   --t-fade: calc(.16s / var(--speed));
-  --t-ui: calc(.15s / var(--speed));
+  --t-ui: var(--dur-ui);
 }
 
 /* island body themes (values of the existing "theme" setting are unchanged) */

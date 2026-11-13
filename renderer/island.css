@@ -18,9 +18,12 @@ svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width:
   position: absolute; top: 0; left: 50%; transform: translateX(-50%);
   width: var(--w); height: var(--h); background: var(--bg); overflow: hidden; border-radius: var(--r);
   box-shadow: 0 0 0 1px var(--border), 0 8px 22px var(--scrim);
-  transition: width var(--t-morph) var(--ease-out), height var(--t-morph) var(--ease-out),
-              border-radius var(--t-morph) var(--ease-out), box-shadow var(--t-morph) var(--ease-out);
+  transition: width var(--t-island) var(--ease-island), height var(--t-island) var(--ease-island),
+              border-radius var(--t-island) var(--ease-island), box-shadow var(--t-island) var(--ease-island);
 }
+/* direction of the last state change (set by island.js): collapsing is quicker and uses an in-out curve, expanding decelerates */
+#island[data-dir="collapse"] { --t-island: var(--dur-collapse); --ease-island: var(--ease-std); }
+#island[data-dir="nav"] { --t-island: var(--dur-nav); }
 body[data-edge="top-flush"] #island { border-radius: 0 0 var(--r) var(--r); }
 body[data-edge="bottom-flush"] #island { border-radius: var(--r) var(--r) 0 0; }
 
@@ -39,7 +42,7 @@ body[data-edge="bottom-flush"] #island, body[data-pos="bottom"] #island { top: a
 .view {
   position: absolute; top: 0; left: 50%; opacity: 0; visibility: hidden; pointer-events: none;
   transform: translateX(-50%) scale(.985);
-  transition: opacity var(--t-fade) var(--ease-std), transform var(--t-morph) var(--ease-out), visibility 0s linear var(--t-fade);
+  transition: opacity var(--t-fade) var(--ease-std), transform var(--t-island) var(--ease-out), visibility 0s linear var(--t-fade);
 }
 #island[data-state="compact"] .v-compact,
 #island[data-state="mini"] .v-mini,
@@ -85,7 +88,7 @@ body[data-edge="bottom-flush"] #island, body[data-pos="bottom"] #island { top: a
   flex: none; height: 84px; border-radius: 26px; background: var(--elevated); border: 1px solid var(--border);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, .04); padding: 0 16px 0 14px; display: flex; align-items: center; gap: 14px;
 }
-.activity.swap .act-tile, .activity.swap .act-main, .activity.swap .act-side { animation: actin calc(.22s / var(--speed)) var(--ease-std); }
+.activity.swap .act-tile, .activity.swap .act-main, .activity.swap .act-side { animation: actin var(--dur-nav) var(--ease-std); }
 @keyframes actin { from { opacity: 0; transform: translateY(4px); } }
 .act-tile { width: 56px; height: 56px; border-radius: 18px; background: var(--bg); border: 1px solid var(--border); display: grid; place-items: center; flex: none; color: var(--fg); }
 .act-tile svg { width: 24px; height: 24px; stroke-width: 1.6; }
@@ -112,12 +115,33 @@ body[data-edge="bottom-flush"] #island, body[data-pos="bottom"] #island { top: a
 }
 .views { flex: 1; min-height: 0; position: relative; }
 .vw { display: none; height: 100%; }
-.vw.on { display: block; animation: vwin calc(.2s / var(--speed)) var(--ease-std); }
+.vw.on { display: block; animation: vwin var(--dur-nav) var(--ease-std); }
 @keyframes vwin { from { opacity: 0; } }
 
-body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after { transition-duration: .01ms !important; transition-delay: 0s !important; animation-duration: .01ms !important; animation-delay: 0s !important; }
+/* Reduced motion: ONE switch, the class on <body>, set by LI.motion from the OS preference + Settings (renderer/motion.js).
+   There is deliberately no @media (prefers-reduced-motion) rule: when Windows "Animation effects" is off Chromium reports reduced motion,
+   and a media rule would silently kill every animation with no way to override it. */
+body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after { transition-duration: .01ms !important; transition-delay: 0s !important; animation-duration: .01ms !important; animation-delay: 0s !important; animation-iteration-count: 1 !important; }
 body.reduce-motion .view { transform: translateX(-50%) !important; }
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { transition-duration: .01ms !important; transition-delay: 0s !important; animation-duration: .01ms !important; animation-delay: 0s !important; }
-  .view { transform: translateX(-50%) !important; }
-}
+
+/* ---------- loading / processing (restrained) ---------- */
+.li-indet { position: relative; height: 4px; border-radius: 2px; background: var(--track); overflow: hidden; }
+.li-indet::after { content: ""; position: absolute; top: 0; bottom: 0; width: 38%; border-radius: inherit; background: var(--accent); animation: li-indet 1.25s var(--ease-std) infinite; }
+@keyframes li-indet { from { left: -40%; } to { left: 102%; } }
+.li-pulse { animation: li-pulse 1.6s var(--ease-std) infinite; }
+@keyframes li-pulse { 50% { opacity: .55; } }
+
+/* ---------- three-line media visualizer in the compact capsule: exists only while something is really playing ---------- */
+.c-viz { display: inline-flex; align-items: center; gap: 2px; height: 12px; }
+.c-viz i { display: block; width: 2px; height: 12px; border-radius: 1px; background: var(--fg); opacity: .85; transform: scaleY(.25); }
+.c-viz[data-play="1"] i { animation: li-viz 1s var(--ease-std) infinite; }
+.c-viz[data-play="1"] i:nth-child(2) { animation-duration: .8s; animation-delay: -.3s; }
+.c-viz[data-play="1"] i:nth-child(3) { animation-duration: 1.15s; animation-delay: -.6s; }
+@keyframes li-viz { 0%, 100% { transform: scaleY(.25); } 50% { transform: scaleY(1); } }
+.c-viz[data-play="0"] i { transform: scaleY(.25); opacity: .5; transition: transform var(--dur-ui) var(--ease-out), opacity var(--dur-ui) var(--ease-out); }
+
+/* artwork inside the activity tile / mini icon */
+img.art { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; display: block; }
+.act-btn[disabled] { opacity: .35; pointer-events: none; }
+#island:not([data-state="compact"]) .c-viz i { animation-play-state: paused; }   /* nothing is animating out of sight */
+.act-tile { overflow: hidden; }

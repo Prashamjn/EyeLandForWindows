@@ -13,15 +13,22 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
+      - name: Install dependencies (FFmpeg for the Audio Studio tests; Electron itself is not needed here)
+        shell: bash
+        env: { ELECTRON_SKIP_BINARY_DOWNLOAD: '1' }
+        run: npm ci --no-audit --no-fund
       - name: Compile every native C# file (Windows PowerShell 5.1, Add-Type)
         shell: powershell
         run: .\tools\windows\compile-native.ps1
-      - name: Unit tests (error transport + WinRT event bridge run on powershell.exe 5.1)
+      - name: Unit tests (error transport + WinRT event bridge on powershell.exe 5.1; Audio Studio against the real Windows FFmpeg build)
         shell: bash
         run: node --test tools/tests/*.test.js
       - name: Start every real helper and read its state (no hardware on the runner)
         shell: bash
         run: node tools/windows/diagnose.js --ci
+      - name: Audio Studio check (production modules, real Windows FFmpeg, measured output)
+        shell: bash
+        run: node tools/windows/audio-studio-check.js
       - name: Keep the diagnostic report
         if: always()
         uses: actions/upload-artifact@v4

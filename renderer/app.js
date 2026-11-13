@@ -9,7 +9,7 @@
     document.body.dataset.theme = S.theme || 'black';
     document.body.dataset.accent = S.accent || 'blue';
     document.documentElement.style.setProperty('--speed', S.animSpeed || 1);
-    document.body.classList.toggle('reduce-motion', !!S.reduceMotion);
+    LI.motion.apply();                                  // reduced-motion class: OS preference + Settings
     LI.island.layout();
     LI.panels.onSettings();
     LI.dashboard.onSettings(!!prev);
@@ -25,6 +25,7 @@
   api.onSettings((s) => { LI.setSettings(s); LI.bus.emit('settings', LI.S); });
   LI.bus.on('settings', () => LI.applySettings(true));
   api.onCoffee((on) => LI.dashboard.setCoffee(on));
+  api.onHold(({ key, on }) => (on ? LI.hold.begin('native:' + key, 10 * 60 * 1000) : LI.hold.end('native:' + key)));   // 10 min maximum: a dialog that never reports closing cannot pin the island
 
   // plugin results from the main process: { icon, text, color }
   const TOAST_ICON = { copy: 'copy', check: 'check', warn: 'warn', search: 'lens', coffee: 'coffee' };
@@ -39,23 +40,9 @@
   });
 
   /* ---------- media ---------- */
-  const mediaActivity = (m) => ({
-    id: 'media', kind: 'media', icon: 'music', title: m.title, sub: m.artist || m.app || '', mini: 'media',
-    controls: [
-      { id: 'prev', icon: 'prev', label: 'Previous', onClick: () => api.media('prev') },
-      { id: 'play', icon: m.playing ? 'pauseF' : 'play', label: m.playing ? 'Pause' : 'Play', primary: true, onClick: () => api.media('play') },
-      { id: 'next', icon: 'next', label: 'Next', onClick: () => api.media('next') },
-    ],
-  });
-  let mediaSeen = false;
-  api.onMedia((m) => {
-    m = m || {};
-    const prev = LI.state.media; LI.state.media = m;
-    LI.activity.setBase('media', m.title ? mediaActivity(m) : null);
-    // a new track while playing gets a brief mini presentation (never on the very first reading at startup)
-    if (mediaSeen && m.title && m.playing && m.title !== prev.title) LI.island.mini(mediaActivity(m), 3200);
-    mediaSeen = true;
-  });
+  api.onMedia((m) => LI.media.onMedia(m));
+  api.onLyrics((l) => LI.media.onLyrics(l));
+  api.onChargeSound((d) => { if (d) LI.chime.play(d.kind, d.volume); });
 
   /* ---------- battery: small readout in the clock card + a charging notice when the power state changes ---------- */
   if (navigator.getBattery) navigator.getBattery().then((b) => {

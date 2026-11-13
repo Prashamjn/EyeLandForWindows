@@ -94,4 +94,26 @@ function createDeduper(windowMs = 4000) {
     seen.set(k, now); return true;
   };
 }
-module.exports = { audio, mic, wifi, bluetooth, vpn, powermode, battery, displays, enabled, createDeduper, MODE_LABEL };
+/* ---------- charger sound ---------- */
+// A real charger event: both readings known, AC state flipped, device has a battery. The very first reading never counts.
+function chargerEvent(prev, next) {
+  if (!prev || !next || !next.hasBattery || prev.ac == null || next.ac == null || prev.ac === next.ac) return null;
+  return next.ac ? 'connect' : 'disconnect';
+}
+// Should that event make a sound? Settings, notification preference and system mute are all respected. volume is 0..1.
+function chargePolicy(kind, S, audioState) {
+  if (!kind || !S) return { play: false, why: 'no-event' };
+  if (S.chargeSound === false) return { play: false, why: 'sound-off' };
+  if (kind === 'disconnect' && !S.chargeDisconnectSound) return { play: false, why: 'disconnect-off' };
+  if (S.notifyBattery === false) return { play: false, why: 'notifications-off' };
+  if (audioState && audioState.muted) return { play: false, why: 'system-muted' };
+  const v = Math.min(100, Math.max(0, Number.isFinite(+S.chargeVolume) ? +S.chargeVolume : 40)) / 100;
+  return v > 0 ? { play: true, volume: v } : { play: false, why: 'volume-zero' };
+}
+// Windows can report one plug-in as several power events; the same kind inside `windowMs` is ignored.
+function createChargeGate(windowMs = 4000, now = Date.now) {
+  let last = { kind: null, at: -Infinity };
+  return (kind) => { const t = now(); if (!kind || (kind === last.kind && t - last.at < windowMs)) return false; last = { kind, at: t }; return true; };
+}
+
+module.exports = { chargerEvent, chargePolicy, createChargeGate, audio, mic, wifi, bluetooth, vpn, powermode, battery, displays, enabled, createDeduper, MODE_LABEL };

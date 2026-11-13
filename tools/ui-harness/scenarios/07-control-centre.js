@@ -30,6 +30,9 @@ module.exports = async (c) => {
   await c.shot('50_control_centre');
 
   // ---------- volume / mute / brightness (round trip through IPC -> helper -> event -> UI) ----------
+  // the Control Centre renders its sliders after the first state arrives; wait for them instead of racing (this scenario failed intermittently
+  // on the untouched baseline too: 5 of 6 runs)
+  for (let i = 0; i < 100 && !(await ev("!!document.getElementById('ccVol') && !!document.getElementById('ccBri')")); i++) await wait(100);
   await ev("(() => { const r = document.getElementById('ccVol'); r.value = 72; r.dispatchEvent(new Event('input')); })(); 0"); await wait(500);
   ok('volume slider -> helper -> state event (72)', await ev("LI.cc.state.audio.volume === 72 && document.getElementById('ccVolN').textContent === '72'"));
   await click('.cc-ib[data-act="mute"]'); await wait(400);
@@ -162,7 +165,7 @@ module.exports = async (c) => {
   inject('bt', 'bt', { radio: 'on', devices: [{ id: 'Bluetooth#buds', name: 'Galaxy Buds', connected: true, paired: true, kind: 'audio', le: false }, { id: 'Bluetooth#mouse', name: 'MX Master', connected: true, paired: true, kind: 'peripheral', le: true }, { id: 'Bluetooth#kb', name: 'Keychron K2', connected: true, paired: true, kind: 'peripheral', le: false }] });
   await wait(700);
   ok('device event expands the compact island to the notification (mini)', await ev("LI.island.state === 'mini' && document.getElementById('mTitle').textContent === 'Galaxy Buds connected'"), await ev("document.getElementById('mTitle').textContent"));
-  ok('notification does not take keyboard focus (window not focusable)', await ev("LI.island.pinned === false"));
+  ok('notification does not take keyboard focus (window not focusable)', await ev("LI.island.workFocus === false"));
   await c.shot('56_notification_mini');
   await wait(3600);
   ok('notification collapses back to compact on its own', await ev("LI.island.state === 'compact'"));

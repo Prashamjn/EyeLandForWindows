@@ -6,7 +6,9 @@
   "scripts": {
     "start": "electron .",
     "dist": "electron-builder --win nsis",
-    "test:unit": "node --test tools/tests/*.test.js"
+    "test:unit": "node --test tools/tests/*.test.js",
+    "diag:audio": "node tools/windows/audio-studio-check.js",
+    "diag:cc": "node tools/windows/diagnose.js"
   },
   "dependencies": {
     "ffmpeg-static": "^5.2.0",

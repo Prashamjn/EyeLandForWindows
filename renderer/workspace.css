@@ -12,9 +12,9 @@
 .wk-spacer { flex: 1; }
 .wk-body { position: absolute; top: 54px; left: 0; right: 0; bottom: 0; padding: 0 14px 0 16px; overflow-y: auto; overflow-x: hidden; margin-right: 2px; }
 .wk-body > .pw, .wk-body > .cc { min-height: 100%; }
-.wk-body > .enter { animation: wkin calc(.26s / var(--speed)) var(--ease-out); }
+.wk-body > .enter { animation: wkin var(--dur-nav) var(--ease-out); }
 @keyframes wkin { from { opacity: 0; transform: translateY(8px); } }
-.wk-body > .enter-back { animation: wkback calc(.26s / var(--speed)) var(--ease-out); }
+.wk-body > .enter-back { animation: wkback var(--dur-nav) var(--ease-out); }
 @keyframes wkback { from { opacity: 0; transform: translateX(-10px); } }
 
 .pw-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; height: 340px; color: var(--muted); text-align: center; }
@@ -27,7 +27,7 @@
   position: absolute; left: 50%; bottom: 16px; transform: translate(-50%, 14px) scale(.97); opacity: 0; pointer-events: none;
   display: flex; align-items: center; gap: 10px; min-width: 220px; max-width: 520px; padding: 9px 16px 9px 12px; border-radius: 22px;
   background: var(--elevated); border: 1px solid var(--border-hi); box-shadow: 0 10px 30px rgba(0, 0, 0, .45); z-index: 5;
-  transition: opacity var(--t-ui), transform var(--t-morph) var(--ease-out);
+  transition: opacity var(--dur-notice) var(--ease-std), transform var(--dur-notice) var(--ease-out);
 }
 .wk-banner.on { opacity: 1; transform: translate(-50%, 0) scale(1); }
 .wk-banner .b-ico { width: 26px; height: 26px; border-radius: 9px; background: var(--bg); display: grid; place-items: center; flex: none; }

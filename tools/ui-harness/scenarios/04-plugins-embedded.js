@@ -3,35 +3,36 @@ const R = []; const ok = (n, c, x = '') => { R.push(!!c); console.log(`[TEST] ${
 module.exports = async (c) => {
   await c.wait(900);
   const cat = await c.ev('api.catalog()');
-  ok('catalog has 21 entries (20 plugins + Shortcuts page)', cat.length === 21, 'n=' + cat.length);
-  ok('catalog groups are the Phase 2 categories', [...new Set(cat.map((p) => p.group))].join(' | ') === 'Screen Tools | Productivity | Files & Utilities | Connectivity | System', [...new Set(cat.map((p) => p.group))].join(' | '));
+  // Phase 3 (deliberate): +2 plugins in the new AUDIO STUDIO category (Audio Trimmer, Audio Merger) => 23 entries, six categories
+  ok('catalog has 23 entries (20 Phase 2 plugins + Shortcuts page + Audio Trimmer + Audio Merger)', cat.length === 23, 'n=' + cat.length);
+  ok('catalog groups are the Phase 2 categories plus Audio Studio', [...new Set(cat.map((p) => p.group))].join(' | ') === 'Screen Tools | Productivity | Files & Utilities | Connectivity | Audio Studio | System', [...new Set(cat.map((p) => p.group))].join(' | '));
   ok('exactly one app window exists (no plugin hub)', c.wins().length === 1, c.wins().map((w) => w.webContents.getURL().split('/').pop()).join());
 
   // plugin grid: all 20 reachable by category
   await c.ev("LI.island.open({ view: 'plugins' }); 0"); await c.wait(700);
   const groups = await c.ev("[...document.querySelectorAll('.pl-cat')].map(b => b.textContent)");
-  ok('plugin navigation lists the five categories', groups.join() === 'Screen Tools,Productivity,Files & Utilities,Connectivity,System', groups.join());
+  ok('plugin navigation lists the six categories', groups.join() === 'Screen Tools,Productivity,Files & Utilities,Connectivity,Audio Studio,System', groups.join());
   const reach = [];
   for (const g of groups) { await c.ev(`document.querySelector('.pl-cat[data-cat="${g}"]').click(); 0`); await c.wait(40); reach.push(...await c.ev("[...document.querySelectorAll('.pl-card')].map(b => b.dataset.id)")); }
-  ok('all 20 plugins are reachable from the grid', reach.length === 20 && new Set(reach).size === 20, reach.length + ' cards');
+  ok('all 22 plugins are reachable from the grid', reach.length === 22 && new Set(reach).size === 22, reach.length + ' cards');
 
-  // open every plugin (all 21 pages) through the real grid/route, check it rendered inside the island
+  // open every plugin (all 23 pages) through the real grid/route, check it rendered inside the island
   const bad = [];
   for (const p of cat) {
     await c.ev(`LI.workspace.openPlugin(${JSON.stringify(p.id)}); 0`); await c.wait(650);
     const r = JSON.parse(await c.ev(`JSON.stringify({ mode: LI.island.mode, state: LI.island.state, route: LI.workspace.route(), title: document.getElementById('wkTitle').textContent,
       kids: document.querySelector('#pluginHost .pw-page') ? document.querySelector('#pluginHost .pw-page').children.length : -1,
-      err: !!document.querySelector('#pluginHost .pw-state .btn'), host: !document.getElementById('pluginHost').hidden, focusable: LI.island.pinned })`));
+      err: !!document.querySelector('#pluginHost .pw-state .btn'), host: !document.getElementById('pluginHost').hidden, focusable: LI.island.workFocus })`));
     const good = r.mode === 'work' && r.state === 'full' && r.route.id === p.id && r.title === p.name && r.kids > 0 && !r.err && r.host && r.focusable;
     if (!good) bad.push(p.id + ' ' + JSON.stringify(r));
     if (c.wins().length !== 1) bad.push(p.id + ' opened another window');
   }
-  ok('all 21 plugin pages render inside the island with their own title', bad.length === 0, bad.join(' ; '));
+  ok('all 23 plugin pages render inside the island with their own title', bad.length === 0, bad.join(' ; '));
 
   // back navigation + state restore
   await c.ev("LI.workspace.openPlugin('calc'); 0"); await c.wait(500);
   await c.ev("document.getElementById('wkBack').click(); 0"); await c.wait(500);
-  ok('Back returns to the dashboard Plugins view', await c.ev("LI.workspace.route().type === 'dash' && LI.island.mode === 'dash' && document.querySelector('.vw.on').dataset.view === 'plugins' && !LI.island.pinned"));
+  ok('Back returns to the dashboard Plugins view', await c.ev("LI.workspace.route().type === 'dash' && LI.island.mode === 'dash' && document.querySelector('.vw.on').dataset.view === 'plugins' && !LI.island.workFocus"));
   ok('plugin page was unmounted (no leftover DOM)', await c.ev("document.getElementById('pluginHost').children.length === 0"));
   await c.ev("LI.workspace.openPlugin('calc'); 0"); await c.wait(400);
   await c.ev("document.getElementById('wkHome').click(); 0"); await c.wait(400);

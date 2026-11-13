@@ -13,5 +13,7 @@ module.exports = async (c) => {
   else ok('no settings file is created or rewritten just by starting the app', !want.noFile || !fs.existsSync(file));
   for (const [k, v] of Object.entries(want.keep || {})) ok(`user data kept: ${k}`, subset(v, live[k]), JSON.stringify(live[k]).slice(0, 80));
   ok('Phase 2 defaults are present in the running settings', live.notifyBluetooth === true && live.expandOn === 'last' && Array.isArray(live.pinned) && live.monitorAudio === true && live.settingsVersion === 2);
+  // Phase 3: new keys appear through the defaults merge only; the file version stays 2 and the user's file is not rewritten for them
+  ok('Phase 3 defaults are present in the running settings (hover, motion, media, charging, Audio Studio)', live.hoverExpand === true && live.autoCollapse === true && live.collapseDelay === 350 && live.motionMode === 'system' && live.mediaVisualizer === true && live.lyricsEnabled === false && live.chargeSound === true && live.chargeVolume === 40 && live.chargeDisconnectSound === false && live.audioFormat === 'mp3' && live.audioRemember === true && !('locked' in live), JSON.stringify({ h: live.hoverExpand, d: live.collapseDelay, l: live.lyricsEnabled }));
   console.log('[TEST] summary pass=' + R.filter(Boolean).length + ' fail=' + R.filter((x) => !x).length);
 };

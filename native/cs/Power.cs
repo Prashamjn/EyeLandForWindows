@@ -17,13 +17,16 @@ public static class LiPower {
   static readonly Guid Efficiency = new Guid("961cc777-2547-4f9d-8174-7d86181b8a7a");
   static readonly Guid Balanced = Guid.Empty;
   static readonly Guid Performance = new Guid("ded574b5-45a0-4f42-8737-46345c09c238");
-  static EffCb effCb; static IntPtr effHandle; static Timer slow, debounce; static string lastBat = "", lastMode = "";
+  static EffCb effCb; static IntPtr effHandle; static Timer slow, debounce; static readonly System.Collections.Generic.List<Timer> keepAlive = new System.Collections.Generic.List<Timer>(); static string lastBat = "", lastMode = ""; static int lastAc = -2;
 
   public static void Init() {
     debounce = new Timer(delegate (object o) { EmitBattery(false); EmitMode(false); }, null, Timeout.Infinite, Timeout.Infinite);
     SystemEvents.PowerModeChanged += delegate { debounce.Change(300, Timeout.Infinite); };       // AC plugged / unplugged, resume
     try { effCb = new EffCb(delegate (int m, IntPtr c) { debounce.Change(200, Timeout.Infinite); }); PowerRegisterForEffectivePowerModeNotifications(1, effCb, IntPtr.Zero, out effHandle); } catch (Exception) { }
     slow = new Timer(delegate (object o) { EmitBattery(false); }, null, 60000, 60000);          // percentage has no change event: 1 cheap read a minute
+    // SystemEvents.PowerModeChanged is not delivered reliably on every Windows 11 laptop (Modern Standby), and a plug / unplug must not wait
+    // for the 60 s read above. So the AC flag alone (one kernel call, no allocation) is checked every 2 s; any change emits the full state.
+    keepAlive.Add(new Timer(delegate (object o) { PollAc(); }, null, 2000, 2000));          // referenced from the list so it is never garbage collected
   }
 
   public static string BatteryJson() {
@@ -31,6 +34,14 @@ public static class LiPower {
     bool has = (p.flag & 128) == 0 && p.flag != 255;
     return LiJson.Obj("hasBattery", has, "ac", p.ac == 1 ? (object)true : (p.ac == 0 ? (object)false : null), "charging", (p.flag & 8) != 0,
       "percent", p.percent == 255 ? (object)null : (int)p.percent, "minutes", p.life < 0 ? (object)null : (int)(p.life / 60), "saver", p.saver == 1);
+  }
+  static void PollAc() {
+    try {
+      SysPower p; if (!GetSystemPowerStatus(out p)) return;
+      if (p.ac == lastAc) return;
+      bool first = lastAc == -2; lastAc = p.ac;
+      if (!first) { EmitBattery(false); EmitMode(false); }            // the first read only records the starting state
+    } catch (Exception e) { LiIO.Log("ac poll: " + e.Message); }
   }
   public static void EmitBattery(bool force) { try { string j = BatteryJson(); if (!force && j == lastBat) return; lastBat = j; LiIO.Event("battery", j); } catch (Exception e) { LiIO.Log("battery: " + e.Message); } }
 

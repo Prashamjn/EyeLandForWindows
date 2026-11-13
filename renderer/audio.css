@@ -1,0 +1,85 @@
+/* Audio Studio (Audio Trimmer + Audio Merger). Scoped under .pw .au; uses only the island's tokens. */
+.pw .au { display: flex; flex-direction: column; gap: 10px; }
+.pw .au-card { padding: 12px 14px; }
+.pw .au-card + .au-card { margin-top: 0; }
+.pw .au-drop { padding: 34px 20px; }
+.pw .au-drop.sm { padding: 12px; font-size: 12.5px; }
+.pw .au-msg { min-height: 18px; font-size: 12.5px; color: var(--muted); display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+.pw .au-msg.bad { color: var(--danger); } .pw .au-msg.ok { color: var(--success); }
+.pw .au-msg .li-indet { width: 90px; flex: none; }
+.pw .au-warn { color: var(--warn); font-size: 12.5px; }
+.pw .au-busy .au-tl, .pw .au-busy .au-times, .pw .au-busy .au-fade, .pw .au-busy .au-out, .pw .au-busy .au-tracks, .pw .au-busy .au-drop { opacity: .55; pointer-events: none; }
+.pw .au-busy .au-transport { opacity: 1; }
+
+/* file card */
+.pw .au-file { display: flex; align-items: center; gap: 12px; padding: 9px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+.pw .au-file-ico { width: 34px; height: 34px; border-radius: 10px; background: var(--elevated); border: 1px solid var(--line); display: grid; place-items: center; color: var(--muted); flex: none; }
+.pw .au-name { font-weight: 600; }
+
+/* timeline */
+.pw .au-tl { position: relative; height: 96px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line); overflow: hidden; cursor: pointer; touch-action: none; user-select: none; }
+.pw .au-wave { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.pw .au-sel { position: absolute; top: 0; bottom: 0; background: color-mix(in srgb, var(--accent) 12%, transparent); border-left: 1px solid color-mix(in srgb, var(--accent) 70%, transparent); border-right: 1px solid color-mix(in srgb, var(--accent) 70%, transparent); pointer-events: none; }
+.pw .au-ph { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--fg); pointer-events: none; opacity: .9; }
+.pw .au-h { position: absolute; top: 0; bottom: 0; width: 14px; margin-left: -7px; cursor: ew-resize; display: grid; place-items: center; outline: none; z-index: 2; }
+.pw .au-h i { display: block; width: 4px; height: 26px; border-radius: 2px; background: var(--accent); box-shadow: 0 0 0 2px rgba(0, 0, 0, .35); transition: height var(--dur-ui) var(--ease-out), background var(--dur-ui); }
+.pw .au-h:hover i, .pw .au-h.drag i, .pw .au-h:focus-visible i { height: 40px; }
+.pw .au-wload { position: absolute; left: 20%; right: 20%; top: 50%; opacity: 0; transition: opacity var(--dur-ui); }
+.pw .au-tl.loading .au-wload { opacity: 1; }
+.pw .au-tl-labels { display: flex; justify-content: space-between; margin-top: 5px; gap: 12px; }
+.pw .au-wnote { flex: 1; text-align: center; min-width: 0; }
+
+/* time + transport */
+.pw .au-times { display: grid; grid-template-columns: 1fr 1fr auto; gap: 14px; margin-top: 10px; align-items: end; }
+.pw .au-time { width: 98px; text-align: center; } .pw .au-time.invalid { border-color: var(--danger); }
+.pw .au-len { display: inline-block; height: 30px; line-height: 30px; font-size: 14px; font-weight: 600; min-width: 70px; }
+.pw .au-transport { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.pw .au-tbtn { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: var(--press); border: 1px solid var(--line); transition: background var(--dur-ui), transform var(--dur-ui) var(--ease-out); }
+.pw .au-tbtn:hover { background: var(--border-hi); } .pw .au-tbtn:active { transform: scale(.94); }
+.pw .au-tbtn.primary { background: var(--fg); color: var(--bg); border-color: transparent; }
+.pw .au-clock { font-size: 12.5px; color: var(--muted); min-width: 110px; }
+.pw .au-chk { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; }
+
+/* fades */
+.pw .au-fade { display: grid; grid-template-columns: 110px 1fr 90px; align-items: center; gap: 12px; padding: 4px 0; }
+.pw .au-fl { font-weight: 600; font-size: 12.5px; }
+.pw .au-num { width: 62px; height: 26px; text-align: right; }
+.pw input[type=range]:disabled { opacity: .4; }
+
+/* output */
+.pw .au-out-row { display: flex; gap: 10px; align-items: flex-end; margin-bottom: 8px; }
+.pw .au-out-row label { min-width: 0; } .pw .au-out-row select.input { width: 130px; }
+.pw .au-dirrow { align-items: center; margin-bottom: 4px; } .pw .au-dir { flex: 1; min-width: 0; }
+.pw .au-actions { margin-top: 10px; gap: 12px; }
+.pw .au-bar { margin-top: 8px; }
+.pw .au-result { display: flex; align-items: center; gap: 12px; margin-top: 10px; padding: 9px 12px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line); }
+
+/* merger: tracks */
+.pw .au-tracks { display: flex; flex-direction: column; gap: 6px; }
+.pw .au-track { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; transition: border-color var(--dur-ui), opacity var(--dur-ui); }
+.pw .au-track.dragging { opacity: .45; }
+.pw .au-track.drop-before { box-shadow: 0 -2px 0 0 var(--accent); } .pw .au-track.drop-after { box-shadow: 0 2px 0 0 var(--accent); }
+.pw .au-th { display: flex; align-items: center; gap: 9px; padding: 8px 10px; }
+.pw .au-grip { cursor: grab; color: var(--faint); display: grid; } .pw .au-grip svg { width: 14px; height: 14px; fill: currentColor; stroke: none; }
+.pw .au-idx { width: 20px; text-align: center; color: var(--faint); font-size: 12px; }
+.pw .au-cd { min-width: 44px; text-align: right; }
+.pw .au-flip svg { transform: rotate(180deg); }
+.pw .btn.icon.on { background: var(--press); color: var(--accent); }
+.pw .au-tb { padding: 4px 12px 12px 41px; border-top: 1px solid var(--line); animation: wkin var(--dur-nav) var(--ease-out); }
+.pw .au-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 18px; padding-top: 10px; }
+.pw .au-tb .au-time { width: 82px; }
+.pw .au-trans { display: flex; align-items: center; gap: 10px; padding: 2px 4px 2px 36px; min-height: 34px; flex-wrap: wrap; }
+.pw .au-tlab { width: 28px; }
+.pw .au-trans .seg button[disabled] { opacity: .4; pointer-events: none; }
+.pw .au-topts { gap: 10px; } .pw .au-topts input[type=range] { width: 130px; } .pw .au-curve { width: 160px; height: 26px; }
+
+/* merger: timeline */
+.pw .au-mtl { position: relative; height: 70px; margin-top: 8px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line); overflow: hidden; }
+.pw .au-mtl-empty { position: absolute; inset: 0; display: grid; place-items: center; }
+.pw .au-blk { position: absolute; height: 28px; border-radius: 7px; padding: 0 8px; display: flex; align-items: center; font-size: 11.5px; font-weight: 600; color: var(--fg); overflow: hidden;
+  background: linear-gradient(90deg, rgba(8, 9, 11, .62) 0, transparent var(--hf, 0%)), linear-gradient(270deg, rgba(8, 9, 11, .62) 0, transparent var(--tf, 0%)), color-mix(in srgb, var(--accent) 34%, var(--elevated));
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent); transition: left var(--dur-nav) var(--ease-out), width var(--dur-nav) var(--ease-out); }
+.pw .au-blk.lane0 { top: 6px; } .pw .au-blk.lane1 { top: 36px; }
+.pw .au-blk.bad { border-color: var(--danger); }
+.pw .au-mark { position: absolute; top: 0; bottom: 0; background: repeating-linear-gradient(135deg, transparent 0 4px, rgba(255, 255, 255, .07) 4px 8px); border-left: 1px dashed var(--border-hi); border-right: 1px dashed var(--border-hi); pointer-events: none; }
+.pw .au-mark.fade { background: rgba(255, 255, 255, .04); }

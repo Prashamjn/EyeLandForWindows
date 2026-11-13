@@ -28,6 +28,7 @@ function createSystem({ nativeDir, send, settings, openExternal, openPath }) {
       cc({ kind: 'notify', ...x, ttl: settings().notifyMs || 2800 });
     }
   }
+  const chargeGate = N.createChargeGate();
   function apply(key, next, differ) {
     const prev = cache[key]; cache[key] = next;
     cc({ kind: 'state', key, data: next });
@@ -52,7 +53,16 @@ function createSystem({ nativeDir, send, settings, openExternal, openPath }) {
     else if (ev === 'bt-events') console.error(`[cc] bluetooth events: ${d.mode}${d.errors && d.errors.length ? ' (' + d.errors.join(' | ') + ')' : ''}`);       // 'polling' means a WinRT subscription failed: the reason is here
   });
   H.power.on('event', (ev, d) => {
-    if (ev === 'battery') apply('battery', d, (p, n) => N.battery(p, n, batteryFlags));
+    if (ev === 'battery') {
+      const prev = cache.battery;
+      apply('battery', d, (p, n) => N.battery(p, n, batteryFlags));
+      const kind = N.chargerEvent(prev, d);                               // real event only: never on the first reading, never while merely connected
+      if (kind) {                                                          // rare, so every outcome is logged (visible in the terminal that runs `npm start`)
+        const gate = !quiet && chargeGate(kind), pol = gate ? N.chargePolicy(kind, settings(), cache.audio) : null;
+        console.error(`[charge] ${kind}: ` + (quiet ? 'ignored (start-up quiet period)' : !gate ? 'ignored (duplicate within 4 s)' : pol.play ? `sound sent (volume ${Math.round(pol.volume * 100)}%)` : `no sound (${pol.why})`));
+        if (pol && pol.play) send('charge-sound', { kind, volume: pol.volume });
+      }
+    }
     else if (ev === 'powermode') apply('powermode', d, N.powermode);
     else if (ev === 'brightness') { cache.bri = d.value; cache.briError = d.error || null; cc({ kind: 'state', key: 'bri', data: d.value }); cc({ kind: 'state', key: 'briError', data: cache.briError }); send('system', { kind: 'bri', value: d.value }); }
   });
