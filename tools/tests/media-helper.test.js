@@ -6,7 +6,8 @@ const test = require('node:test'); const assert = require('node:assert/strict');
 const fs = require('fs'); const os = require('os'); const path = require('path');
 const { spawnSync } = require('child_process');
 const ROOT = path.join(__dirname, '..', '..');
-const src = fs.readFileSync(path.join(ROOT, 'native', 'media.ps1'), 'utf8');
+// git on Windows checks files out with CRLF line endings: normalise so the patterns below behave the same everywhere
+const src = fs.readFileSync(path.join(ROOT, 'native', 'media.ps1'), 'utf8').replace(/\r\n/g, '\n');
 const ps = ['pwsh', 'powershell'].find((c) => { try { return spawnSync(c, ['-NoProfile', '-Command', '1'], { timeout: 20000 }).status === 0; } catch { return false; } });
 
 test('media.ps1: no unbounded wait anywhere', () => {
